@@ -1,0 +1,41 @@
+package org.example.treenode;
+
+import java.util.List;
+import java.util.Map;
+
+import com.github.javaparser.ast.Modifier.Keyword;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ClassInfo {
+    // 类来源
+    private ClassOrigin classOrigin;
+
+    // 类注释
+    private String classComment;
+
+    // annotation
+    // key: 注解名，value: 注解参数
+    // 注解参数：key：参数名，value 参数值(String/int/bool/enum/arr/class)
+    private Map<String, Map<String, Object>> annotations;
+
+    // javaparser Modifier.Keyword，诸如 public, final, abstract 等
+    private List<Keyword> classModifiers;
+
+    // 类声明，如 class/interface/enum/annotation/record
+    private ClassDeclaration classDeclaration;
+
+    // 类名，比如 ClassInfo
+    private String className;
+    // 多态场景下的真实类名
+    // 比如 Child extends Parent，当 Parent parent = new Child() 时，parent 对应的 className
+    // 是 Parent，而 realClassName 是 Child
+    // 比如 Child implements Parent，当 Parent parent = new Child() 时，parent 对应的
+    // className 是 Parent，而 realClassName 是 Child
+    private String realClassName;
+}
