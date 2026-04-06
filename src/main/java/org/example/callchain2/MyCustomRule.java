@@ -13,12 +13,12 @@ public class MyCustomRule extends CustomRule {
     public MyCustomRule() {
         // 默认使用 NORMAL 模式
         setPreciseModel(PreciseModel.NORMAL);
-        // 默认最大层数为 1
+        // 默认最大层数为 20
         setMaxLayer(20);
         // 设置需要舍弃的类
         setThrownClasses(Arrays.asList());
         // 设置需要包含的类
-        setFilterClasses(Arrays.asList( "org.example.callchain*"));
+        setFilterClasses(Arrays.asList());
     }
 
     /**
