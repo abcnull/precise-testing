@@ -5,15 +5,58 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.example.callchain2.MyCustomRule;
 import org.example.resolver.CallChainResolver;
-import org.example.treenode.AstNode;
-import org.example.treenode.ClassInfo;
-import org.example.treenode.FuncInfo;
-import org.example.treenode.PackageInfo;
+import org.example.node.AstNode;
+import org.example.node.field.ClassInfo;
+import org.example.node.field.FuncInfo;
 
 import com.github.javaparser.ast.Modifier.Keyword;
 
 public class Main {
+
+    // public static void main(String[] args) {
+    //     // 获取项目根目录
+    //     String projectRoot = System.getProperty("user.dir");
+    //     String sourceRoot = projectRoot + "/src/main/java";
+
+    //     System.out.println("=======================================");
+    //     System.out.println("       精准测试 - 方法调用链路解析器");
+    //     System.out.println("=======================================\n");
+
+    //     // 创建解析器
+    //     CallChainResolver resolver = new CallChainResolver(sourceRoot);
+
+    //     // 从 Level1.level1Func 开始解析调用链路
+    //     String startClass = "org.example.callchain2.Level1";
+    //     String startMethod = "level1Func";
+
+    //     System.out.println("开始解析调用链路...");
+    //     System.out.println("起始方法: " + startClass + "." + startMethod + "(String, int)\n");
+
+    //     // 解析调用链
+    //     AstNode rootNode = resolver.resolveCallChain(
+    //             startClass,
+    //             startMethod,
+    //             new ArrayList<>()
+    //     );
+        
+    //     // 从顶到底部的调用关系（访问孩子节点）
+    //     System.out.println("=======================================");
+    //     System.out.println("         从顶到底部的调用关系");
+    //     System.out.println("=======================================");
+    //     System.out.println();
+    //     printAstTree(rootNode, 0, true, "");
+
+    //     // 从底部到顶部的被调用关系（通过先找到底部，再访问父节点来实现）
+    //     System.out.println();
+    //     System.out.println("=======================================");
+    //     System.out.println("         从底部到顶部的被调用关系");
+    //     System.out.println("=======================================");
+    //     System.out.println();
+    //     printCallHierarchy(rootNode);
+    // }
+
 
     public static void main(String[] args) {
         // 获取项目根目录
@@ -25,7 +68,8 @@ public class Main {
         System.out.println("=======================================\n");
 
         // 创建解析器
-        CallChainResolver resolver = new CallChainResolver(sourceRoot);
+        // 写一个匿名类继承 CustomRule 
+        CallChainResolver resolver = new CallChainResolver(sourceRoot, new MyCustomRule());
 
         // 从 Level1.level1Func 开始解析调用链路
         String startClass = "org.example.callchain.Level1";
@@ -34,22 +78,88 @@ public class Main {
         System.out.println("开始解析调用链路...");
         System.out.println("起始方法: " + startClass + "." + startMethod + "(String, int)\n");
 
-        // 解析调用链
-        AstNode<PackageInfo, ClassInfo, FuncInfo> rootNode = resolver.resolveCallChain(
+        // 解析第一个调用链（org.example.callchain.Level1）
+        AstNode rootNode1 = resolver.resolveCallChain(
                 startClass,
                 startMethod,
                 Arrays.asList("String", "int")
         );
 
-        // 打印AST树形结构
+        // 解析第二个调用链（org.example.callchain2.Level1）
+        String startClass2 = "org.example.callchain2.Level1";
+        String startMethod2 = "level1Func";
+        System.out.println("开始解析第二个调用链路...");
+        System.out.println("起始方法: " + startClass2 + "." + startMethod2 + "()");
+        AstNode rootNode2 = resolver.resolveCallChain(
+                startClass2,
+                startMethod2,
+                Arrays.asList()
+        );
+
+        // 合并两个 AstNode
+        System.out.println("开始合并两个调用链...\n");
+        resolver.mergeCallChain(rootNode1, rootNode2);
+        
+        // 测试合并多个 AstNode
+        System.out.println("开始测试合并多个调用链...\n");
+        List<AstNode> nodesToMerge = new ArrayList<>();
+        nodesToMerge.add(rootNode1);
+        nodesToMerge.add(rootNode2);
+        resolver.mergeCallChain(nodesToMerge);
+        System.out.println("多个调用链合并完成！\n");
+
+        // 打印合并后的AST树形结构（从第一个根节点开始）
         System.out.println("=======================================");
-        System.out.println("           调用链路AST树形结构");
+        System.out.println("        合并后的调用链路AST树形结构");
         System.out.println("=======================================\n");
-        printAstTree(rootNode, 0, true, "");
+        System.out.println("【从第一个根节点遍历】");
+        printAstTree(rootNode1, 0, true, "");
+
+        // 打印合并后的AST树形结构（从第二个根节点开始）
+        System.out.println("\n=======================================");
+        System.out.println("【从第二个根节点遍历】");
+        printAstTree(rootNode2, 0, true, "");
+
+        // 从 rootNode2 的叶子节点向上遍历
+        System.out.println("\n=======================================");
+        System.out.println("【从第二个根节点的叶子节点向上遍历】");
+        printCallHierarchy(rootNode2);
+
+        // 测试 reverseCallChainStr 方法
+        System.out.println("\n=======================================");
+        System.out.println("         测试 reverseCallChainStr 方法");
+        System.out.println("=======================================");
+        
+        // 找到一个叶子节点进行测试
+        if (rootNode2.getChildren() != null && !rootNode2.getChildren().isEmpty()) {
+            AstNode testNode = rootNode2.getChildren().get(0);
+            System.out.println("测试节点: " + testNode.getFuncInfo().getFuncName() + "()");
+            System.out.println("\n从该节点到出口节点的所有链路:");
+            
+            java.util.List<String> chains = resolver.reverseCallChainStr(testNode);
+            for (int i = 0; i < chains.size(); i++) {
+                System.out.println((i + 1) + ". " + chains.get(i));
+            }
+            
+            // 测试 reverseLeavesName 方法
+            System.out.println("\n=======================================");
+            System.out.println("         测试 reverseLeavesName 方法");
+            System.out.println("=======================================");
+            System.out.println("测试节点: " + testNode.getFuncInfo().getFuncName() + "()");
+            System.out.println("\n从该节点到出口节点的所有出口节点:");
+            
+            java.util.List<String> exitNodes = resolver.reverseLeavesName(testNode);
+            for (int i = 0; i < exitNodes.size(); i++) {
+                System.out.println((i + 1) + ". " + exitNodes.get(i));
+            }
+        }
 
         System.out.println("\n=======================================");
         System.out.println("              解析完成");
         System.out.println("=======================================");
+
+
+        
     }
 
     /**
@@ -60,7 +170,7 @@ public class Main {
      * @param isLast     是否是最后一个子节点
      * @param prefix     前缀字符串（用于绘制连接线）
      */
-    private static void printAstTree(AstNode<PackageInfo, ClassInfo, FuncInfo> node, int depth, boolean isLast, String prefix) {
+    private static void printAstTree(AstNode node, int depth, boolean isLast, String prefix) {
         if (node == null || node.getFuncInfo() == null) {
             return;
         }
@@ -95,7 +205,7 @@ public class Main {
      * 构建方法签名字符串
      * 格式: [注解列表] 修饰符列表 返回值类型（带包名）#类名（带包名）#方法名(参数类型列表（带包名）)
      */
-    private static String buildMethodSignature(AstNode<PackageInfo, ClassInfo, FuncInfo> node) {
+    private static String buildMethodSignature(AstNode node) {
         FuncInfo info = node.getFuncInfo();
         ClassInfo classInfo = node.getClassInfo();
         StringBuilder sb = new StringBuilder();
@@ -231,5 +341,101 @@ public class Main {
             return sb.toString();
         }
         return value.toString();
+    }
+
+    /**
+     * 打印从底部到顶部的被调用关系
+     * 先找到所有叶节点，然后通过父节点向上遍历
+     */
+    private static void printCallHierarchy(AstNode rootNode) {
+        // 收集所有叶节点（没有子节点的节点）
+        List<AstNode> leafNodes = new ArrayList<>();
+        collectLeafNodes(rootNode, leafNodes);
+
+        // 打印叶节点数量
+        System.out.println("总共有 " + leafNodes.size() + " 个叶子节点：\n");
+
+        // 对每个叶节点，打印其到根节点的路径
+        for (int i = 0; i < leafNodes.size(); i++) {
+            AstNode leafNode = leafNodes.get(i);
+            System.out.println("叶节点 " + (i + 1) + ":");
+            System.out.println("  节点信息: " + buildMethodSignature(leafNode));
+            
+            // 打印父节点数量
+            int parentCount = leafNode.getParents() != null ? leafNode.getParents().size() : 0;
+            System.out.println("  父节点数量: " + parentCount);
+            
+            // 打印所有父节点路径
+            if (leafNode.getParents() != null && !leafNode.getParents().isEmpty()) {
+                for (int j = 0; j < leafNode.getParents().size(); j++) {
+                    AstNode parent = leafNode.getParents().get(j);
+                    System.out.println("  父节点 " + (j + 1) + " 路径:");
+                    printPathToRoot(parent, 2);
+                }
+            } else {
+                System.out.println("  没有父节点");
+            }
+            System.out.println();
+        }
+    }
+
+    /**
+     * 收集所有叶节点
+     */
+    private static void collectLeafNodes(AstNode node, List<AstNode> leafNodes) {
+        if (node == null) {
+            return;
+        }
+
+        // 如果是叶节点（没有子节点或子节点都是循环调用）
+        boolean isLeaf = true;
+        if (node.getChildren() != null) {
+            for (AstNode child : node.getChildren()) {
+                if (!child.isLoopCall()) {
+                    isLeaf = false;
+                    break;
+                }
+            }
+        }
+
+        if (isLeaf) {
+            leafNodes.add(node);
+        }
+
+        // 递归收集子节点
+        if (node.getChildren() != null) {
+            for (AstNode child : node.getChildren()) {
+                if (!child.isLoopCall()) {
+                    collectLeafNodes(child, leafNodes);
+                }
+            }
+        }
+    }
+
+    /**
+     * 打印从当前节点到根节点的路径
+     */
+    private static void printPathToRoot(AstNode node, int depth) {
+        if (node == null) {
+            return;
+        }
+
+        // 构建缩进
+        StringBuilder indentBuilder = new StringBuilder();
+        for (int i = 0; i < depth; i++) {
+            indentBuilder.append("  ");
+        }
+        String indent = indentBuilder.toString();
+
+        // 打印当前节点
+        String methodSignature = buildMethodSignature(node);
+        System.out.println(indent + methodSignature);
+
+        // 递归打印父节点
+        if (node.getParents() != null && !node.getParents().isEmpty()) {
+            // 只打印第一个父节点，避免重复路径
+            AstNode parent = node.getParents().get(0);
+            printPathToRoot(parent, depth + 1);
+        }
     }
 }
