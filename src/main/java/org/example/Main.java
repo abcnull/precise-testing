@@ -30,8 +30,7 @@ public class Main {
         AstNode rootNode1 = resolver.resolveCallChain(
                 startClass,
                 startMethod,
-                Arrays.asList("String", "int")
-        );
+                Arrays.asList("String", "int"));
 
         // 打印第一个调用链的树形结构
         System.out.println("=======================================");
@@ -47,8 +46,7 @@ public class Main {
         AstNode rootNode2 = resolver.resolveCallChain(
                 startClass2,
                 startMethod2,
-                Arrays.asList()
-        );
+                Arrays.asList());
 
         // 打印第二个调用链的树形结构
         System.out.println("\n=======================================");
