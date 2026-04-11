@@ -33,5 +33,9 @@ public class SecondLevel3 extends ParentClass {
         return super.secondLevel3_2Func(name);
     }
 
+    public String testMyChild(String name) {
+        return "nihao";
+    }
+
     
 }

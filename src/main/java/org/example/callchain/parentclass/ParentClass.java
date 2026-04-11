@@ -25,4 +25,13 @@ public class ParentClass {
     public void setParentName(String parentName) {
         this.parentName = parentName;
     }
+
+    public String testMyParent(String name) {
+        return "nihao";
+    }
+
+
+    public String testMyChild(String name) {
+        return "nihao111";
+    }
 }

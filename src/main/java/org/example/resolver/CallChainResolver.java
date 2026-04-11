@@ -1,16 +1,12 @@
 package org.example.resolver;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
@@ -20,44 +16,51 @@ import org.example.node.field.FuncInfo;
 import org.example.node.field.PackageInfo;
 import org.example.resolver.extractor.ClassInfoExtractor;
 import org.example.resolver.extractor.MethodInfoExtractor;
+import org.example.resolver.extractor.PackageInfoExtractor;
 import org.example.resolver.factory.NodeFactory;
 import org.example.resolver.model.MethodCallInfo;
-import org.example.resolver.util.ParserUtil;
+import org.example.resolver.parser.ClassParser;
+import org.example.resolver.parser.FileParser;
+import org.example.resolver.parser.MethodParser;
 import org.example.resolver.util.StringUtil;
-import org.example.rule.CustomRule;
-import org.example.rule.DangerModRule;
 import org.example.rule.IPreciseRule;
 import org.example.rule.NormalRule;
 import org.example.rule.PreciseModel;
-import org.example.rule.WarnModRule;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.expr.Expression;
-import com.github.javaparser.ast.expr.MethodCallExpr;
-import com.github.javaparser.ast.expr.NameExpr;
-import com.github.javaparser.ast.expr.ObjectCreationExpr;
-import com.github.javaparser.ast.expr.VariableDeclarationExpr;
-import com.github.javaparser.resolution.declarations.ResolvedConstructorDeclaration;
-import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import com.github.javaparser.symbolsolver.JavaSymbolSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.CombinedTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeSolver;
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
 
+/**
+ * 调用链解析器
+ */
 public class CallChainResolver {
+    // 项目根目录，比如 /Users/abcnull/IdeaProjects/precise-testing/src/main/java
+    private final String sourceRootPath;
+    // 精确规则，用于过滤调用链路
+    private final IPreciseRule preciseRule;
 
-    private final String sourceRootPath; // 项目根目录
-    private final JavaParser javaParser; // 用于解析Java源文件
-    private final Map<String, CompilationUnit> parsedFiles; // key: 类全限定名, value: 编译单元
-    private final Set<String> visitedMethods; // 已访问的方法签名集合
+    // 节点工厂
+    private final NodeFactory nodeFactory;
+
+    // 节点缓存
     private final Map<String, AstNode> nodeCache; // 节点缓存，key: 方法唯一标识，value: 对应的AstNode
-    private final IPreciseRule preciseRule; // 精确规则，用于过滤调用链路
+    private final Set<String> visitedMethods; // 已访问的方法签名集合，用于判定是否循环调用
+    private final Map<String, CompilationUnit> parsedFiles; // key: 类全限定名, value: 编译单元
 
-    // 组件实例
-    private final NodeFactory nodeFactory; // 节点工厂
+    // 解析器
+    private final JavaParser javaParser; // 用于解析Java源文件
+    private final FileParser fileParser; // 文件解析器
+    private final ClassParser classParser; // 方法解析器
+    private final MethodParser methodParser; // 参数解析器
+
+    // 抽取器
+    private final PackageInfoExtractor packageInfoExtractor; // 包信息提取器
     private final ClassInfoExtractor classInfoExtractor; // 类信息提取器
     private final MethodInfoExtractor methodInfoExtractor; // 方法信息提取器
 
@@ -65,6 +68,13 @@ public class CallChainResolver {
         this(sourceRootPath, new NormalRule());
     }
 
+    /**
+     * 构造函数，初始化解析器组件 DONE
+     * 
+     * @param sourceRootPath 项目根目录，比如
+     *                       /Users/abcnull/IdeaProjects/precise-testing/src/main/java
+     * @param preciseRule    精确规则，用于过滤调用链路
+     */
     public CallChainResolver(String sourceRootPath, IPreciseRule preciseRule) {
         this.sourceRootPath = sourceRootPath;
         this.parsedFiles = new HashMap<>();
@@ -72,15 +82,9 @@ public class CallChainResolver {
         this.nodeCache = new HashMap<>();
         this.preciseRule = preciseRule;
 
-        // 初始化组件实例
-        this.nodeFactory = new NodeFactory();
-        this.classInfoExtractor = new ClassInfoExtractor();
-        this.methodInfoExtractor = new MethodInfoExtractor();
-
         // 配置类型解析器
         CombinedTypeSolver combinedTypeSolver = new CombinedTypeSolver();
         combinedTypeSolver.add(new ReflectionTypeSolver());
-
         // 添加JavaParserTypeSolver来解析项目中的自定义类
         try {
             File sourceRoot = new File(sourceRootPath);
@@ -94,22 +98,31 @@ public class CallChainResolver {
         } catch (Exception e) {
             // 忽略异常，继续使用ReflectionTypeSolver
         }
-
         // 配置JavaParser
         ParserConfiguration config = new ParserConfiguration()
                 .setSymbolResolver(new JavaSymbolSolver(combinedTypeSolver));
         this.javaParser = new JavaParser(config);
+
+        this.fileParser = new FileParser(javaParser, sourceRootPath);
+        this.classParser = new ClassParser();
+        this.methodParser = new MethodParser();
+
+        this.nodeFactory = new NodeFactory();
+        this.packageInfoExtractor = new PackageInfoExtractor();
+        this.classInfoExtractor = new ClassInfoExtractor();
+        this.methodInfoExtractor = new MethodInfoExtractor();
     }
 
     /**
-     * 从指定方法开始解析调用链路
+     * 从指定方法开始解析调用链路 DONE
      *
      * @param className  类全限定名
      * @param methodName 方法名
-     * @param paramTypes 参数类型列表
+     * @param paramTypes 参数类型列表，比如 String, int
      * @return AstNode 调用链树根节点
      */
     public AstNode resolveCallChain(String className, String methodName, List<String> paramTypes) {
+        // 用于记录已访问的方法签名，循环调用时，避免重复解析相同方法
         visitedMethods.clear();
         // 每次解析新的调用链时，清空节点缓存
         nodeCache.clear();
@@ -118,10 +131,10 @@ public class CallChainResolver {
         CompilationUnit cu = getOrParseCompilationUnit(className);
         if (cu != null) {
             // 查找目标方法
-            MethodDeclaration targetMethod = ParserUtil.findMethodDeclaration(cu, methodName, paramTypes);
+            MethodDeclaration targetMethod = classParser.parseOutMethodDeclaration(cu, methodName, paramTypes);
             if (targetMethod != null) {
-                // 使用完整参数类型重新构建方法签名
-                List<String> fullParamTypes = ParserUtil.extractFullParamTypes(targetMethod);
+                // 使用完整参数类型重新构建方法签名，含有包名
+                List<String> fullParamTypes = methodParser.parseOutFullParamTypes(targetMethod);
                 // 递归解析方法调用，初始层级为1
                 return resolveMethodCall(className, className, methodName, fullParamTypes, 1);
             }
@@ -131,50 +144,83 @@ public class CallChainResolver {
     }
 
     /**
-     * 生成节点的唯一标识符
+     * 生成节点的唯一标识符 DONE
      * 基于方法名、参数类型、realClassName和realPackageName
+     * 
+     * @param className     类全限定名
+     * @param realClassName 真实全限定类名（考虑多态）
+     * @param methodName    方法名
+     * @param paramTypes    参数类型列表，比如 String, int
+     * @return 节点唯一标识符
      */
     private String generateNodeKey(String className, String realClassName, String methodName, List<String> paramTypes) {
-        StringBuilder keyBuilder = new StringBuilder();
-        // 添加声明类名（多态场景下的接口或父类）
-        keyBuilder.append(StringUtil.getPackageName(className)).append(".");
-        keyBuilder.append(StringUtil.getSimpleClassName(className)).append("#");
-        // 添加真实类名
-        keyBuilder.append(StringUtil.getPackageName(realClassName)).append(".");
-        keyBuilder.append(StringUtil.getSimpleClassName(realClassName)).append(".");
-        keyBuilder.append(methodName).append("(");
-        if (paramTypes != null && !paramTypes.isEmpty()) {
-            for (int i = 0; i < paramTypes.size(); i++) {
-                if (i > 0)
-                    keyBuilder.append(",");
-                keyBuilder.append(paramTypes.get(i));
-            }
-        }
-        keyBuilder.append(")");
-        return keyBuilder.toString();
+        return StringUtil.buildMethodSignature(className, realClassName, methodName, paramTypes);
     }
 
     /**
-     * 递归解析方法调用
+     * 递归解析方法调用 DONE
+     * 
+     * @param className     类全限定名
+     * @param realClassName 真实全限定类名（考虑多态）
+     * @param methodName    方法名
+     * @param paramTypes    参数类型列表，比如 String, int
+     * @param currentLayer  当前递归层级
+     * @return AstNode 调用链树节点
      */
     private AstNode resolveMethodCall(String className, String realClassName, String methodName,
             List<String> paramTypes, int currentLayer) {
-        // 生成唯一标识符用于循环检测
-        String methodSignature = buildMethodSignature(className, realClassName, methodName, paramTypes);
-
-        // 检测循环调用
-        if (visitedMethods.contains(methodSignature)) {
-            // 尝试获取 CompilationUnit
-            CompilationUnit cu = getOrParseCompilationUnit(realClassName);
-            if (cu == null) {
-                cu = getOrParseCompilationUnit(className);
-            }
-            return nodeFactory.createCycleNode(className, realClassName, methodName, paramTypes, cu);
+        /* 检测基本的精准测试模式过滤 */
+        // 检查是否应该构造该节点
+        if (!shouldCreateNode(realClassName)) {
+            // 不应该构造节点，直接返回 null
+            return null;
         }
 
+        // 生成唯一标识符用于循环检测
+        String methodSignature = buildMethodSignature(className, realClassName, methodName, paramTypes);
         // 生成节点唯一标识并检查缓存
         String nodeKey = generateNodeKey(className, realClassName, methodName, paramTypes);
+        // realClassName 编译单元
+        CompilationUnit cu = getOrParseCompilationUnit(realClassName);
+
+        /* 检测是否达到最大深度 */
+        // 检查是达到最大层数，创建叶子节点
+        int maxLayer = preciseRule.getMaxLayer();
+        if (currentLayer >= maxLayer) {
+            // 如果有循环调用
+            if (visitedMethods.contains(methodSignature)) {
+                return nodeFactory.createCycleNode(cu, className, realClassName, methodName, paramTypes);
+            }
+            // 如果节点可以复用
+            if (nodeCache.containsKey(nodeKey)) {
+                // 节点复用
+                AstNode cachedNode = nodeCache.get(nodeKey);
+                // 只有非循环调用节点可以被复用
+                if (!cachedNode.isLoopCall()) {
+                    return cachedNode;
+                }
+            }
+            // 否则创建一个叶子节点返回
+            AstNode leafNode = nodeFactory.createLeafNode(cu, className, realClassName, methodName, paramTypes);
+            if (!leafNode.isLoopCall()) {
+                nodeCache.put(nodeKey, leafNode);
+            }
+            return leafNode;
+        }
+
+        /* 检测是否循环调用节点 */
+        // 检测循环调用
+        if (visitedMethods.contains(methodSignature)) {
+            // 创建循环调用节点
+            return nodeFactory.createCycleNode(cu, className, realClassName, methodName, paramTypes);
+        }
+        // 检测完，没有循环调用就 add
+        visitedMethods.add(methodSignature);
+
+        /* 检测节点是否可以复用 */
+        // 节点可以复用，直接返回
         if (nodeCache.containsKey(nodeKey)) {
+            // 节点复用
             AstNode cachedNode = nodeCache.get(nodeKey);
             // 只有非循环调用节点可以被复用
             if (!cachedNode.isLoopCall()) {
@@ -182,100 +228,30 @@ public class CallChainResolver {
             }
         }
 
-        // 检查是否应该构造该节点
-        boolean shouldCreate = shouldCreateNode(className, realClassName);
-        if (!shouldCreate) {
-            // 不应该构造节点，直接返回 null
-            return null;
-        }
-
-        // 检查是否超过最大层数
-        int maxLayer = getMaxLayer();
-        if (currentLayer >= maxLayer) {
-            // 达到最大层数，不继续递归，创建叶节点
-            CompilationUnit cu = getOrParseCompilationUnit(realClassName);
-            if (cu == null) {
-                cu = getOrParseCompilationUnit(className);
-            }
-            AstNode leafNode = nodeFactory.createLeafNode(className, realClassName, methodName, paramTypes, cu);
-            if (!leafNode.isLoopCall()) {
-                nodeCache.put(nodeKey, leafNode);
-            }
-            return leafNode;
-        }
-
-        visitedMethods.add(methodSignature);
-
-        // 尝试首先解析实际类型（多态情况）
-        CompilationUnit cu = getOrParseCompilationUnit(realClassName);
-        MethodDeclaration targetMethod = null;
-
-        // 如果实际类型不存在或找不到方法，回退到声明类型
-        if (cu == null || (targetMethod = ParserUtil.findMethodDeclaration(cu, methodName, paramTypes)) == null) {
-            cu = getOrParseCompilationUnit(className);
-            if (cu == null) {
-                // 无法解析的文件（如JDK类库），检查是否应该构造节点
-                if (!shouldCreateNode(className, realClassName)) {
-                    visitedMethods.remove(methodSignature); // 回溯：移除当前方法
-                    return null;
-                }
-                // 应该构造节点，创建叶节点
-                AstNode leafNode = nodeFactory.createLeafNode(className, realClassName, methodName, paramTypes, cu);
-                // 只有非循环调用节点才加入缓存
-                if (!leafNode.isLoopCall()) {
-                    nodeCache.put(nodeKey, leafNode);
-                }
-                visitedMethods.remove(methodSignature); // 回溯：移除当前方法
-                return leafNode;
-            }
-            targetMethod = ParserUtil.findMethodDeclaration(cu, methodName, paramTypes);
-            if (targetMethod == null) {
-                // 无法找到方法，检查是否应该构造节点
-                if (!shouldCreateNode(className, realClassName)) {
-                    visitedMethods.remove(methodSignature); // 回溯：移除当前方法
-                    return null;
-                }
-                // 应该构造节点，创建叶节点
-                AstNode leafNode = nodeFactory.createLeafNode(className, realClassName, methodName, paramTypes, cu);
-                // 只有非循环调用节点才加入缓存
-                if (!leafNode.isLoopCall()) {
-                    nodeCache.put(nodeKey, leafNode);
-                }
-                visitedMethods.remove(methodSignature); // 回溯：移除当前方法
-                return leafNode;
-            }
-        }
-
+        /* 创建节点 */
         // 创建当前节点
         AstNode currentNode = new AstNode();
-
         // 设置包信息
-        String packageName = StringUtil.getPackageName(className);
-        String realPackageName = StringUtil.getPackageName(realClassName);
-        PackageInfo packageInfo = new PackageInfo(packageName, realPackageName);
+        PackageInfo packageInfo = packageInfoExtractor.extract(className, realClassName);
         currentNode.setPackageInfo(packageInfo);
-
-        // 创建并设置ClassInfo
-        ClassInfo classInfo = classInfoExtractor.extract(new Object[] { cu, className, realClassName });
+        // 创建并设置 ClassInfo
+        ClassInfo classInfo = classInfoExtractor.extract(cu, className, realClassName);
         currentNode.setClassInfo(classInfo);
-
         // 创建并设置FuncInfo
-        FuncInfo funcInfo = methodInfoExtractor.extract(new Object[] { cu, targetMethod });
+        MethodDeclaration targetMethod = classParser.parseOutMethodDeclaration(cu, methodName, paramTypes);
+        FuncInfo funcInfo = methodInfoExtractor.extract(targetMethod, realClassName, methodName, paramTypes);
         currentNode.setFuncInfo(funcInfo);
-
         // 设置循环调用标志
         currentNode.setLoopCall(false);
-
         // 初始化子节点列表和父节点列表
         currentNode.setChildren(new ArrayList<>());
         currentNode.setParents(new ArrayList<>());
-
         // 将当前节点加入缓存
         nodeCache.put(nodeKey, currentNode);
 
+        /* 递归解析方法调用，DFS */
         // 查找方法体内的所有方法调用
-        List<MethodCallInfo> methodCalls = extractMethodCalls(targetMethod);
-
+        List<MethodCallInfo> methodCalls = methodParser.parseOutMethodCalls(targetMethod);
         // 递归解析每个方法调用，深度优先搜索
         for (MethodCallInfo callInfo : methodCalls) {
             AstNode childNode = resolveMethodCall(
@@ -286,8 +262,9 @@ public class CallChainResolver {
                     currentLayer + 1);
             // 只有当子节点不为 null 时，才将其添加到父节点的 children 列表中
             if (childNode != null) {
+                // currentNode 更新孩子节点列表
                 currentNode.getChildren().add(childNode);
-                // 更新子节点的父节点列表
+                // childNode 更新父节点列表
                 if (childNode.getParents() == null) {
                     childNode.setParents(new ArrayList<>());
                 }
@@ -295,169 +272,44 @@ public class CallChainResolver {
             }
         }
 
-        visitedMethods.remove(methodSignature); // 回溯：移除当前方法
+        /* 回溯：移除当前方法 */
+        visitedMethods.remove(methodSignature); // 表示该节点要返回，访问记录中没有它
         return currentNode;
     }
 
     /**
-     * 检查是否应该构造该节点
+     * 检查是否应该构造该节点 DONE
      * 
-     * @param className     类名
      * @param realClassName 实际类名
      * @return 是否应该构造节点
      */
-    private boolean shouldCreateNode(String className, String realClassName) {
+    private boolean shouldCreateNode(String realClassName) {
         // 首先检查是否在抛出列表中
-        if (isInThrownClasses(realClassName)) {
+        if (isInThrownClasses(realClassName, preciseRule.getThrownClasses())) {
             return false;
         }
 
-        // 然后根据模式检查类来源
-        boolean shouldIncludeByModel = shouldIncludeByModel(realClassName);
-
-        // 检查是否是 NORMAL 或 WARN_MOD 模式
-        boolean isSpecialMode = false;
-        if (preciseRule instanceof NormalRule) {
-            isSpecialMode = true;
-        } else if (preciseRule instanceof WarnModRule) {
-            isSpecialMode = true;
-        } else if (preciseRule instanceof CustomRule) {
-            CustomRule rule = (CustomRule) preciseRule;
-            isSpecialMode = (rule.getPreciseModel() == PreciseModel.NORMAL ||
-                    rule.getPreciseModel() == PreciseModel.WARN_MOD);
+        // 再检查是否在过滤列表中
+        if (!isInFilterClasses(realClassName, preciseRule.getFilterClasses())) {
+            return false;
         }
 
-        // 在 NORMAL 或 WARN_MOD 模式下，直接返回 shouldIncludeByModel，忽略过滤列表
-        if (isSpecialMode) {
-            return shouldIncludeByModel;
-        }
-
-        // 其他模式下，检查是否在过滤列表中
-        return isInFilterClasses(realClassName);
+        // 然后根据模式检查确认是否要包含该类
+        return shouldIncludeByModel(realClassName);
     }
 
     /**
-     * 检查类是否在抛出列表中
+     * 检查类是否在抛出列表中 DONE
      * 
-     * @param className 类名
+     * @param realClassName 全限定类名
      * @return 是否在抛出列表中
      */
-    private boolean isInThrownClasses(String className) {
-        if (preciseRule instanceof NormalRule) {
-            NormalRule rule = (NormalRule) preciseRule;
-            List<String> thrownClasses = rule.getThrownClasses();
-            return isClassInList(className, thrownClasses);
-        } else if (preciseRule instanceof WarnModRule) {
-            WarnModRule rule = (WarnModRule) preciseRule;
-            List<String> thrownClasses = rule.getThrownClasses();
-            return isClassInList(className, thrownClasses);
-        } else if (preciseRule instanceof DangerModRule) {
-            DangerModRule rule = (DangerModRule) preciseRule;
-            List<String> thrownClasses = rule.getThrownClasses();
-            return isClassInList(className, thrownClasses);
-        } else if (preciseRule instanceof CustomRule) {
-            CustomRule rule = (CustomRule) preciseRule;
-            List<String> thrownClasses = rule.getThrownClasses();
-            return isClassInList(className, thrownClasses);
-        }
-        return false;
-    }
-
-    /**
-     * 检查类是否在过滤列表中
-     * 
-     * @param className 类名
-     * @return 是否在过滤列表中
-     */
-    private boolean isInFilterClasses(String className) {
-        if (preciseRule instanceof NormalRule) {
-            NormalRule rule = (NormalRule) preciseRule;
-            List<String> filterClasses = rule.getFilterClasses();
-            return isClassInFilterList(className, filterClasses);
-        } else if (preciseRule instanceof WarnModRule) {
-            WarnModRule rule = (WarnModRule) preciseRule;
-            List<String> filterClasses = rule.getFilterClasses();
-            return isClassInFilterList(className, filterClasses);
-        } else if (preciseRule instanceof DangerModRule) {
-            DangerModRule rule = (DangerModRule) preciseRule;
-            List<String> filterClasses = rule.getFilterClasses();
-            return isClassInFilterList(className, filterClasses);
-        } else if (preciseRule instanceof CustomRule) {
-            CustomRule rule = (CustomRule) preciseRule;
-            List<String> filterClasses = rule.getFilterClasses();
-            return isClassInFilterList(className, filterClasses);
-        }
-        return true;
-    }
-
-    /**
-     * 根据模式检查是否应该包含该类
-     * 
-     * @param className 类名
-     * @return 是否应该包含
-     */
-    private boolean shouldIncludeByModel(String className) {
-        if (preciseRule instanceof NormalRule) {
-            NormalRule rule = (NormalRule) preciseRule;
-            if (rule.getPreciseModel() == PreciseModel.NORMAL) {
-                // NORMAL模式：只包含项目中的类
-                CompilationUnit cu = getOrParseCompilationUnit(className);
-                return cu != null;
-            }
-        } else if (preciseRule instanceof WarnModRule) {
-            WarnModRule rule = (WarnModRule) preciseRule;
-            if (rule.getPreciseModel() == PreciseModel.WARN_MOD) {
-                // WARN_MOD模式：包含项目中的类和第三方依赖，不包含JDK类
-                CompilationUnit cu = getOrParseCompilationUnit(className);
-                if (cu != null) {
-                    return true; // 项目中的类
-                }
-                // 检查是否是JDK类
-                String packageName = StringUtil.getPackageName(className);
-                return !packageName.startsWith("java.") && !packageName.startsWith("javax.");
-            }
-        } else if (preciseRule instanceof DangerModRule) {
-            DangerModRule rule = (DangerModRule) preciseRule;
-            if (rule.getPreciseModel() == PreciseModel.DANGER_MOD) {
-                // DANGER_MOD模式：包含所有类
-                return true;
-            }
-        } else if (preciseRule instanceof CustomRule) {
-            CustomRule rule = (CustomRule) preciseRule;
-            if (rule.getPreciseModel() == PreciseModel.NORMAL) {
-                // NORMAL模式：只包含项目中的类
-                CompilationUnit cu = getOrParseCompilationUnit(className);
-                return cu != null;
-            } else if (rule.getPreciseModel() == PreciseModel.WARN_MOD) {
-                // WARN_MOD模式：包含项目中的类和第三方依赖，不包含JDK类
-                CompilationUnit cu = getOrParseCompilationUnit(className);
-                if (cu != null) {
-                    return true; // 项目中的类
-                }
-                // 检查是否是JDK类
-                String packageName = StringUtil.getPackageName(className);
-                return !packageName.startsWith("java.") && !packageName.startsWith("javax.");
-            } else if (rule.getPreciseModel() == PreciseModel.DANGER_MOD) {
-                // DANGER_MOD模式：包含所有类
-                return true;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * 检查类是否在列表中（支持通配符）
-     * 
-     * @param className 类名
-     * @param classList 类列表
-     * @return 是否在列表中
-     */
-    private boolean isClassInList(String className, List<String> classList) {
-        if (classList == null || classList.isEmpty()) {
+    private boolean isInThrownClasses(String realClassName, List<String> thrownClasses) {
+        if (thrownClasses == null || thrownClasses.isEmpty()) {
             return false;
         }
-        for (String pattern : classList) {
-            if (matchesPattern(className, pattern)) {
+        for (String pattern : thrownClasses) {
+            if (matchesPattern(realClassName, pattern)) {
                 return true;
             }
         }
@@ -465,18 +317,17 @@ public class CallChainResolver {
     }
 
     /**
-     * 检查类是否在过滤列表中（支持通配符）
+     * 检查类是否在过滤列表中 DONE
      * 
-     * @param className  类名
-     * @param filterList 过滤列表
+     * @param realClassName 全限定类名
      * @return 是否在过滤列表中
      */
-    private boolean isClassInFilterList(String className, List<String> filterList) {
-        if (filterList == null || filterList.isEmpty()) {
+    private boolean isInFilterClasses(String realClassName, List<String> filterClasses) {
+        if (filterClasses == null || filterClasses.isEmpty()) {
             return true; // 过滤列表为空，默认包含所有类
         }
-        for (String pattern : filterList) {
-            if (matchesPattern(className, pattern)) {
+        for (String pattern : filterClasses) {
+            if (matchesPattern(realClassName, pattern)) {
                 return true;
             }
         }
@@ -484,7 +335,35 @@ public class CallChainResolver {
     }
 
     /**
-     * 检查类名是否匹配模式（支持通配符）
+     * 根据模式检查是否应该包含该类 DONE
+     * 
+     * @param realClassName 全限定类名
+     * @return 是否应该包含
+     */
+    private boolean shouldIncludeByModel(String realClassName) {
+        CompilationUnit cu = getOrParseCompilationUnit(realClassName);
+
+        if (preciseRule.getPreciseModel() == PreciseModel.NORMAL) {
+            // NORMAL模式：只包含项目中的类
+            return cu != null;
+        } else if (preciseRule.getPreciseModel() == PreciseModel.WARN_MOD) {
+            // WARN_MOD模式：包含项目中的类和第三方依赖，不包含JDK类
+            if (cu != null) {
+                return true; // 项目中的类
+            }
+            // 检查是否是JDK类
+            String packageName = StringUtil.getPackageName(realClassName);
+            return !packageName.startsWith("java.") && !packageName.startsWith("javax.");
+        } else if (preciseRule.getPreciseModel() == PreciseModel.DANGER_MOD) {
+            // DANGER_MOD模式：包含所有类
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 检查类名是否匹配模式（支持通配符） DONE
      * 
      * @param className 类名
      * @param pattern   模式
@@ -505,450 +384,23 @@ public class CallChainResolver {
         return className.matches(regex);
     }
 
-    public static void main(String[] args) {
-        CallChainResolver resolver = new CallChainResolver("");
-        System.out.println(resolver.matchesPattern("org.example.callchain2.AAA", "org.example.callchain*"));
-    }
-
     /**
-     * 从 preciseRule 获取最大层数
+     * 通过获取或解析CompilationUnit DONE
      * 
-     * @return 最大层数
-     */
-    private int getMaxLayer() {
-        if (preciseRule instanceof NormalRule) {
-            return ((NormalRule) preciseRule).getMaxLayer();
-        } else if (preciseRule instanceof WarnModRule) {
-            return ((WarnModRule) preciseRule).getMaxLayer();
-        } else if (preciseRule instanceof DangerModRule) {
-            return ((DangerModRule) preciseRule).getMaxLayer();
-        } else if (preciseRule instanceof CustomRule) {
-            return ((CustomRule) preciseRule).getMaxLayer();
-        }
-        return Integer.MAX_VALUE;
-    }
-
-    /**
-     * 获取或解析CompilationUnit
+     * @param className 全限定类名
+     * @return CompilationUnit
      */
     private CompilationUnit getOrParseCompilationUnit(String className) {
         if (parsedFiles.containsKey(className)) {
             return parsedFiles.get(className);
         }
 
-        // 将类名转换为文件路径
-        String relativePath = className.replace(".", "/") + ".java";
-
-        // 尝试直接在 sourceRootPath 中查找
-        Path filePath = Paths.get(sourceRootPath, relativePath);
-        File file = filePath.toFile();
-
-        // 如果文件不存在，检查 sourceRootPath 是否已经包含 "src/main/java"
-        if (!file.exists() && !sourceRootPath.endsWith("src/main/java")) {
-            // 尝试在项目源码目录中查找
-            Path altPath = Paths.get(sourceRootPath, "src/main/java", relativePath);
-            file = altPath.toFile();
+        // 调用ClassParser解析类文件
+        CompilationUnit cu = fileParser.parseOutCompilationUnit(className);
+        if (cu != null) {
+            parsedFiles.put(className, cu);
         }
-
-        if (!file.exists()) {
-            return null;
-        }
-
-        try {
-            CompilationUnit cu = javaParser.parse(file).getResult().orElse(null);
-            if (cu != null) {
-                parsedFiles.put(className, cu);
-            }
-            return cu;
-        } catch (FileNotFoundException e) {
-            return null;
-        }
-    }
-
-    /**
-     * 提取方法体内的所有方法调用和构造方法调用（按代码出现顺序）
-     */
-    private List<MethodCallInfo> extractMethodCalls(MethodDeclaration method) {
-        List<MethodCallInfo> calls = new ArrayList<>();
-        final MethodDeclaration finalMethod = method;
-
-        // 按代码中出现的顺序遍历所有表达式节点，只处理 MethodCallExpr 和 ObjectCreationExpr
-        method.findAll(Expression.class).forEach(expr -> {
-            if (expr.isMethodCallExpr()) {
-                // 处理普通方法调用
-                MethodCallExpr callExpr = expr.asMethodCallExpr();
-                try {
-                    // 尝试解析方法调用
-                    ResolvedMethodDeclaration resolvedMethod = callExpr.resolve();
-                    // String declaringClass = resolvedMethod.getClassName();
-                    String methodName = resolvedMethod.getName();
-
-                    // 构建完整的类名（包含包名）
-                    String fullDeclaringClass = resolvedMethod.getClassName();
-                    String packageName = resolvedMethod.getPackageName();
-                    if (!packageName.isEmpty()) {
-                        fullDeclaringClass = packageName + "." + fullDeclaringClass;
-                    }
-                    String[] realFullDeclaringClass = { fullDeclaringClass }; // 默认为相同的类，使用数组包装
-
-                    // 尝试解析作用域的实际类型（多态情况）
-                    try {
-                        if (callExpr.getScope().isPresent()) {
-                            Expression scopeExpr = callExpr.getScope().get();
-                            // 尝试解析变量声明，查找初始化表达式
-                            if (scopeExpr.isNameExpr()) {
-                                NameExpr nameExpr = scopeExpr.asNameExpr();
-                                String variableName = nameExpr.getNameAsString();
-
-                                // 在当前方法中查找变量声明
-                                Optional<VariableDeclarationExpr> varDeclOpt = finalMethod
-                                        .findAll(VariableDeclarationExpr.class)
-                                        .stream()
-                                        .filter(varDecl -> varDecl.getVariables().stream()
-                                                .anyMatch(var -> var.getNameAsString().equals(variableName)))
-                                        .findFirst();
-
-                                if (varDeclOpt.isPresent()) {
-                                    VariableDeclarationExpr varDecl = varDeclOpt.get();
-                                    // 查找变量初始化表达式
-                                    varDecl.getVariables().stream()
-                                            .filter(var -> var.getNameAsString().equals(variableName))
-                                            .findFirst()
-                                            .ifPresent(var -> {
-                                                if (var.getInitializer().isPresent()) {
-                                                    Expression initializer = var.getInitializer().get();
-                                                    // 检查是否是对象创建表达式
-                                                    if (initializer.isObjectCreationExpr()) {
-                                                        ObjectCreationExpr creationExpr = initializer
-                                                                .asObjectCreationExpr();
-                                                        // 获取实际实例化的类型
-                                                        String actualType = creationExpr.getType().toString();
-                                                        // 去掉泛型参数
-                                                        if (actualType.contains("<")) {
-                                                            actualType = actualType.substring(0,
-                                                                    actualType.indexOf("<"));
-                                                        }
-                                                        // 构建完整的类名
-                                                        String fullActualType;
-                                                        if (actualType.contains(".")) {
-                                                            // 已经是完整类名
-                                                            fullActualType = actualType;
-                                                        } else {
-                                                            // 尝试从import语句中获取完整类名
-                                                            String fullClassName = ParserUtil
-                                                                    .findFullClassNameFromImports(
-                                                                            actualType, finalMethod);
-                                                            if (fullClassName != null) {
-                                                                fullActualType = fullClassName;
-                                                            } else {
-                                                                // 如果找不到import，使用当前包名
-                                                                String initPackageName = finalMethod
-                                                                        .findCompilationUnit()
-                                                                        .flatMap(CompilationUnit::getPackageDeclaration)
-                                                                        .map(pd -> pd.getNameAsString())
-                                                                        .orElse("");
-                                                                fullActualType = initPackageName.isEmpty() ? actualType
-                                                                        : initPackageName + "." + actualType;
-                                                            }
-                                                        }
-                                                        realFullDeclaringClass[0] = fullActualType;
-                                                    }
-                                                }
-                                            });
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        // 解析失败时保持默认值
-                    }
-
-                    // 获取参数类型
-                    List<String> paramTypes = new ArrayList<>();
-                    for (int i = 0; i < resolvedMethod.getNumberOfParams(); i++) {
-                        String paramType = resolvedMethod.getParam(i).getType().describe();
-                        paramTypes.add(paramType);
-                    }
-
-                    calls.add(
-                            new MethodCallInfo(fullDeclaringClass, realFullDeclaringClass[0], methodName, paramTypes));
-                } catch (Exception e) {
-                    // 解析失败时，使用简单推断
-                    String methodName = callExpr.getNameAsString();
-                    String[] inferredClass = { inferClassNameFromCall(callExpr, finalMethod) }; // 使用数组包装
-                    String[] realInferredClass = { inferredClass[0] }; // 默认为相同的类，使用数组包装
-
-                    // 尝试解析作用域的实际类型（多态情况）
-                    try {
-                        if (callExpr.getScope().isPresent()) {
-                            Expression scopeExpr = callExpr.getScope().get();
-                            // 尝试解析变量声明，查找初始化表达式
-                            if (scopeExpr.isNameExpr()) {
-                                NameExpr nameExpr = scopeExpr.asNameExpr();
-                                String variableName = nameExpr.getNameAsString();
-
-                                // 在当前方法中查找变量声明
-                                Optional<VariableDeclarationExpr> varDeclOpt = finalMethod
-                                        .findAll(VariableDeclarationExpr.class)
-                                        .stream()
-                                        .filter(varDecl -> varDecl.getVariables().stream()
-                                                .anyMatch(var -> var.getNameAsString().equals(variableName)))
-                                        .findFirst();
-
-                                if (varDeclOpt.isPresent()) {
-                                    VariableDeclarationExpr varDecl = varDeclOpt.get();
-                                    // 查找变量初始化表达式
-                                    varDecl.getVariables().stream()
-                                            .filter(var -> var.getNameAsString().equals(variableName))
-                                            .findFirst()
-                                            .ifPresent(var -> {
-                                                // 尝试获取变量的类型（声明类型）
-                                                String variableType = var.getType().toString();
-                                                // 构建完整的类名（包含包名）
-                                                String packageName = finalMethod.findCompilationUnit()
-                                                        .flatMap(CompilationUnit::getPackageDeclaration)
-                                                        .map(pd -> pd.getNameAsString())
-                                                        .orElse("");
-
-                                                // 尝试解析变量类型的完整类名
-                                                try {
-                                                    String fullVariableType = var.getType().resolve().describe();
-                                                    inferredClass[0] = fullVariableType;
-                                                } catch (Exception ex) {
-                                                    // 解析失败时，使用简单推断
-                                                    if (!variableType.contains(".")) {
-                                                        // 尝试从import语句中获取完整类名
-                                                        String fullClassName = ParserUtil.findFullClassNameFromImports(
-                                                                variableType, finalMethod);
-                                                        if (fullClassName != null) {
-                                                            inferredClass[0] = fullClassName;
-                                                        } else {
-                                                            // 如果找不到import，使用当前包名
-                                                            inferredClass[0] = packageName.isEmpty() ? variableType
-                                                                    : packageName + "." + variableType;
-                                                        }
-                                                    } else {
-                                                        // 已经是完整类名
-                                                        inferredClass[0] = variableType;
-                                                    }
-                                                }
-
-                                                if (var.getInitializer().isPresent()) {
-                                                    Expression initializer = var.getInitializer().get();
-                                                    // 检查是否是对象创建表达式
-                                                    if (initializer.isObjectCreationExpr()) {
-                                                        ObjectCreationExpr creationExpr = initializer
-                                                                .asObjectCreationExpr();
-                                                        // 获取实际实例化的类型
-                                                        String actualType = creationExpr.getType().toString();
-                                                        // 去掉泛型参数
-                                                        if (actualType.contains("<")) {
-                                                            actualType = actualType.substring(0,
-                                                                    actualType.indexOf("<"));
-                                                        }
-                                                        // 构建完整的类名
-                                                        String fullActualType;
-                                                        if (actualType.contains(".")) {
-                                                            // 已经是完整类名
-                                                            fullActualType = actualType;
-                                                        } else {
-                                                            // 尝试从import语句中获取完整类名
-                                                            String fullClassName = ParserUtil
-                                                                    .findFullClassNameFromImports(
-                                                                            actualType, finalMethod);
-                                                            if (fullClassName != null) {
-                                                                fullActualType = fullClassName;
-                                                            } else {
-                                                                // 如果找不到import，使用当前包名
-                                                                String initPackageName = finalMethod
-                                                                        .findCompilationUnit()
-                                                                        .flatMap(CompilationUnit::getPackageDeclaration)
-                                                                        .map(pd -> pd.getNameAsString())
-                                                                        .orElse("");
-                                                                fullActualType = initPackageName.isEmpty() ? actualType
-                                                                        : initPackageName + "." + actualType;
-                                                            }
-                                                        }
-                                                        realInferredClass[0] = fullActualType;
-                                                    }
-                                                }
-                                            });
-                                }
-                            }
-                        }
-                    } catch (Exception ex) {
-                        // 解析失败时保持默认值
-                    }
-
-                    // 推断参数类型
-                    List<String> paramTypes = new ArrayList<>();
-                    callExpr.getArguments().forEach(arg -> {
-                        try {
-                            paramTypes.add(arg.calculateResolvedType().describe());
-                        } catch (Exception ex) {
-                            // 如果无法解析，使用简单类型名
-                            paramTypes.add(arg.toString());
-                        }
-                    });
-
-                    calls.add(new MethodCallInfo(inferredClass[0], realInferredClass[0], methodName, paramTypes));
-                }
-            } else if (expr.isObjectCreationExpr()) {
-                // 处理构造方法调用
-                ObjectCreationExpr creationExpr = expr.asObjectCreationExpr();
-                try {
-                    // 尝试解析构造方法调用
-                    ResolvedConstructorDeclaration resolvedConstructor = creationExpr
-                            .resolve();
-                    String declaringClass = resolvedConstructor.getClassName();
-                    // 使用类名作为构造方法的 funcName
-                    String methodName = declaringClass;
-
-                    // 构建完整的类名（包含包名）
-                    String fullDeclaringClass = resolvedConstructor.getClassName();
-                    String packageName = resolvedConstructor.getPackageName();
-                    if (!packageName.isEmpty()) {
-                        fullDeclaringClass = packageName + "." + fullDeclaringClass;
-                    }
-
-                    // 获取参数类型
-                    List<String> paramTypes = new ArrayList<>();
-                    for (int i = 0; i < resolvedConstructor.getNumberOfParams(); i++) {
-                        String paramType = resolvedConstructor.getParam(i).getType().describe();
-                        paramTypes.add(paramType);
-                    }
-
-                    calls.add(new MethodCallInfo(fullDeclaringClass, fullDeclaringClass, methodName, paramTypes));
-                } catch (Exception e) {
-                    // 解析失败时，使用简单推断
-                    String className = creationExpr.getType().toString();
-                    // 使用类名作为构造方法的 funcName
-                    String methodName = StringUtil.getSimpleClassName(className);
-                    // 构建完整的类名
-                    String fullClassName;
-                    if (className.contains(".")) {
-                        // 已经是完整类名
-                        fullClassName = className;
-                    } else {
-                        // 尝试从import语句中获取完整类名
-                        String fullClassNameFromImports = ParserUtil.findFullClassNameFromImports(className,
-                                finalMethod);
-                        if (fullClassNameFromImports != null) {
-                            fullClassName = fullClassNameFromImports;
-                        } else {
-                            // 如果找不到import，使用当前包名
-                            String initPackageName = finalMethod.findCompilationUnit()
-                                    .flatMap(CompilationUnit::getPackageDeclaration)
-                                    .map(pd -> pd.getNameAsString())
-                                    .orElse("");
-                            fullClassName = initPackageName.isEmpty() ? className : initPackageName + "." + className;
-                        }
-                    }
-
-                    // 推断参数类型
-                    List<String> paramTypes = new ArrayList<>();
-                    creationExpr.getArguments().forEach(arg -> {
-                        try {
-                            paramTypes.add(arg.calculateResolvedType().describe());
-                        } catch (Exception ex) {
-                            // 如果无法解析，使用简单类型名
-                            paramTypes.add(arg.toString());
-                        }
-                    });
-
-                    calls.add(new MethodCallInfo(fullClassName, fullClassName, methodName, paramTypes));
-                }
-            }
-        });
-
-        return calls;
-    }
-
-    /**
-     * 从方法调用推断类名（简化版本）
-     */
-    private String inferClassNameFromCall(MethodCallExpr callExpr, MethodDeclaration containingMethod) {
-        // 获取包含该方法的类的包名
-        String packageName = containingMethod.findCompilationUnit()
-                .flatMap(CompilationUnit::getPackageDeclaration)
-                .map(pd -> pd.getNameAsString())
-                .orElse("");
-
-        // 简单推断：如果是简单名称调用，假设是同包下的类
-        if (callExpr.getScope().isPresent()) {
-            Expression scopeExpr = callExpr.getScope().get();
-            // 对于链式调用，尝试获取最内层的作用域
-            while (scopeExpr.isMethodCallExpr()) {
-                scopeExpr = scopeExpr.asMethodCallExpr().getScope().orElse(scopeExpr);
-            }
-
-            final String[] scopeArray = { scopeExpr.toString() }; // 使用数组包装，以便在lambda中修改
-            // 如果是变量名（如 level2），尝试推断类型
-            // 如果是类名（如 StringUtils），尝试从import语句中获取完整类名
-            if (Character.isLowerCase(scopeArray[0].charAt(0))) {
-                // 尝试在当前方法中查找变量声明
-                Optional<VariableDeclarationExpr> varDeclOpt = containingMethod.findAll(VariableDeclarationExpr.class)
-                        .stream()
-                        .filter(varDecl -> varDecl.getVariables().stream()
-                                .anyMatch(var -> var.getNameAsString().equals(scopeArray[0])))
-                        .findFirst();
-
-                if (varDeclOpt.isPresent()) {
-                    VariableDeclarationExpr varDecl = varDeclOpt.get();
-                    // 查找变量初始化表达式
-                    varDecl.getVariables().stream()
-                            .filter(var -> var.getNameAsString().equals(scopeArray[0]))
-                            .findFirst()
-                            .ifPresent(var -> {
-                                // 尝试获取变量的类型（声明类型）
-                                String variableType = var.getType().toString();
-                                // 移除泛型参数
-                                int genericStart = variableType.indexOf('<');
-                                if (genericStart > 0) {
-                                    variableType = variableType.substring(0, genericStart);
-                                }
-                                // 构建完整的类名（包含包名）
-                                if (!variableType.contains(".")) {
-                                    // 如果类型名不包含包名，尝试从import语句中获取
-                                    String fullClassName = ParserUtil.findFullClassNameFromImports(variableType,
-                                            containingMethod);
-                                    if (fullClassName != null) {
-                                        scopeArray[0] = fullClassName;
-                                    } else {
-                                        // 如果找不到import，使用当前包名
-                                        scopeArray[0] = packageName.isEmpty() ? variableType
-                                                : packageName + "." + variableType;
-                                    }
-                                } else {
-                                    // 已经是完整类名
-                                    scopeArray[0] = variableType;
-                                }
-                            });
-                } else {
-                    // 如果找不到变量声明，使用默认处理
-                    String className = Character.toUpperCase(scopeArray[0].charAt(0)) + scopeArray[0].substring(1);
-                    // 确保返回完整的类名（包含包名）
-                    return packageName.isEmpty() ? className : packageName + "." + className;
-                }
-            } else {
-                // 大写开头，可能是类名（如 StringUtils）
-                String scopeName = scopeArray[0];
-                // 尝试从import语句中获取完整类名
-                String fullClassName = ParserUtil.findFullClassNameFromImports(scopeName, containingMethod);
-                if (fullClassName != null) {
-                    return fullClassName;
-                }
-            }
-            return scopeArray[0];
-        }
-
-        // 没有scope，可能是本类方法或父类方法
-        return containingMethod.findCompilationUnit()
-                .flatMap(cu -> cu.getTypes().stream().findFirst())
-                .map(type -> {
-                    String typeName = type.getNameAsString();
-                    return packageName.isEmpty() ? typeName : packageName + "." + typeName;
-                })
-                .orElse("");
+        return cu;
     }
 
     /**
@@ -1415,30 +867,13 @@ public class CallChainResolver {
     }
 
     /**
-     * 通过反射查找方法
-     */
-    private java.lang.reflect.Method findMethodByReflection(Class<?> clazz, String methodName,
-            List<String> paramTypes) {
-        try {
-            if (paramTypes == null || paramTypes.isEmpty()) {
-                return clazz.getMethod(methodName);
-            }
-
-            // 尝试匹配参数类型
-            java.lang.reflect.Method[] methods = clazz.getMethods();
-            for (java.lang.reflect.Method method : methods) {
-                if (method.getName().equals(methodName) && method.getParameterCount() == paramTypes.size()) {
-                    return method;
-                }
-            }
-        } catch (Exception e) {
-            // 忽略异常
-        }
-        return null;
-    }
-
-    /**
      * 构建方法签名
+     * 
+     * @param className     声明类名（多态场景下的接口或父类）
+     * @param realClassName 真实类名（多态场景下的子类）
+     * @param methodName    方法名
+     * @param paramTypes    参数类型列表，比如 String, int
+     * @return 方法签名
      */
     private String buildMethodSignature(String className, String realClassName, String methodName,
             List<String> paramTypes) {

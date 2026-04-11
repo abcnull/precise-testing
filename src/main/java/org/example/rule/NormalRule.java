@@ -16,5 +16,4 @@ public class NormalRule implements IPreciseRule {
 
     // 需要包含的类
     private final List<String> filterClasses = null;
-
 }

@@ -8,8 +8,14 @@ import org.example.callchain.parentclass.ParentAbstract;
 import org.example.callchain.parentclass.ParentClass;
 import org.example.callchain.parentclass.ParentInterface;
 
+@Deprecated
 public class Level2 {
 
+    /**
+     * dsfdadfasdf
+     * @param name
+     * @param age
+     */
     public Level2(String name, int age) {
     }
 
@@ -85,5 +91,9 @@ public class Level2 {
         arrayList.stream().filter(StringUtils::isNotBlank).collect(Collectors.toList());
 
         return "level2_6Func";
+    }
+
+    public String myTest(String name) {
+        return "myTest";
     }
 }

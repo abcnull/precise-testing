@@ -1,43 +1,55 @@
 package org.example.resolver.factory;
 
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.Modifier.Keyword;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.example.node.AstNode;
 import org.example.node.field.ClassInfo;
 import org.example.node.field.FuncInfo;
 import org.example.node.field.PackageInfo;
 import org.example.resolver.extractor.ClassInfoExtractor;
-import org.example.resolver.extractor.MethodReflectionExtractor;
-import org.example.resolver.util.StringUtil;
+import org.example.resolver.extractor.MethodInfoExtractor;
+import org.example.resolver.extractor.PackageInfoExtractor;
+import org.example.resolver.parser.ClassParser;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.List;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.body.MethodDeclaration;
 
+/**
+ * 节点工厂类，用于创建AST节点
+ */
 public class NodeFactory {
 
+    private final PackageInfoExtractor packageInfoExtractor = new PackageInfoExtractor();
     private final ClassInfoExtractor classInfoExtractor = new ClassInfoExtractor();
-    private final MethodReflectionExtractor methodReflectionExtractor = new MethodReflectionExtractor();
+    private final MethodInfoExtractor methodInfoExtractor = new MethodInfoExtractor();
+    private final ClassParser classParser = new ClassParser();
 
     /**
-     * 创建循环调用节点
+     * 创建循环调用节点 DONE
+     * 
+     * @param cu            真实类的编译单元
+     * @param className     全限定类名
+     * @param realClassName 全限定真实类名（多态场景下真实的类）
+     * @param methodName    方法名
+     * @param paramTypes    参数类型列表
+     * @return 循环调用节点
      */
-    public AstNode createCycleNode(String className, String realClassName, String methodName, List<String> paramTypes, CompilationUnit cu) {
+    public AstNode createCycleNode(CompilationUnit cu, String className, String realClassName, String methodName,
+            List<String> paramTypes) {
         AstNode cycleNode = new AstNode();
 
         // 设置包信息
-        String packageName = StringUtil.getPackageName(className);
-        String realPackageName = StringUtil.getPackageName(realClassName);
-        PackageInfo packageInfo = new PackageInfo(packageName, realPackageName);
+        PackageInfo packageInfo = packageInfoExtractor.extract(className, realClassName);
         cycleNode.setPackageInfo(packageInfo);
 
         // 创建并设置ClassInfo
-        ClassInfo classInfo = classInfoExtractor.extractWithReflection(className, realClassName, cu);
+        ClassInfo classInfo = classInfoExtractor.extract(cu, className, realClassName);
         cycleNode.setClassInfo(classInfo);
 
         // 创建并设置FuncInfo
-        FuncInfo cycleInfo = methodReflectionExtractor.extractMethodInfo(className, methodName, paramTypes, cu);
+        MethodDeclaration method = classParser.parseOutMethodDeclaration(cu, methodName, paramTypes);
+        FuncInfo cycleInfo = methodInfoExtractor.extract(method, realClassName, methodName, paramTypes);
         cycleNode.setFuncInfo(cycleInfo);
 
         // 设置循环调用标志
@@ -49,56 +61,33 @@ public class NodeFactory {
 
         return cycleNode;
     }
-    
-
 
     /**
-     * 创建叶节点（用于无法解析的方法）
+     * 创建叶节点（用于无法解析的方法）DONE
+     * 
+     * @param className     全限定类名
+     * @param realClassName 全限定真实类名（多态场景下真实的类）
+     * @param methodName    方法名
+     * @param paramTypes    参数类型列表
+     * @param cu            真实类的编译单元
+     * @return 叶节点
      */
-    public AstNode createLeafNode(String className, String realClassName, String methodName, List<String> paramTypes, CompilationUnit cu) {
+    public AstNode createLeafNode(CompilationUnit cu, String className, String realClassName, String methodName,
+            List<String> paramTypes) {
         AstNode node = new AstNode();
 
         // 设置包信息
-        String packageName = StringUtil.getPackageName(className);
-        String realPackageName = StringUtil.getPackageName(realClassName);
-        PackageInfo packageInfo = new PackageInfo(packageName, realPackageName);
+        PackageInfo packageInfo = packageInfoExtractor.extract(className, realClassName);
         node.setPackageInfo(packageInfo);
 
         // 创建并设置ClassInfo
-        ClassInfo classInfo = classInfoExtractor.extractWithReflection(className, realClassName, cu);
+        ClassInfo classInfo = classInfoExtractor.extract(cu, className, realClassName);
         node.setClassInfo(classInfo);
 
         // 创建并设置FuncInfo
-        FuncInfo info = methodReflectionExtractor.extractMethodInfo(className, methodName, paramTypes, cu);
-        
-        // 尝试通过反射获取构造器信息
-        try {
-            // 检查是否是构造器
-            if (methodName.equals(StringUtil.getSimpleClassName(className))) {
-                // 尝试获取构造器
-                Class<?> clazz = Class.forName(className);
-                Constructor<?> constructor = methodReflectionExtractor.findConstructorByReflection(clazz, paramTypes);
-                if (constructor != null && (info.getMethodModifiers() == null || info.getMethodModifiers().isEmpty())) {
-                    // 获取构造器修饰符
-                    int constructorModifiers = constructor.getModifiers();
-                    List<Keyword> constructorModifierList = new ArrayList<>();
-                    if (Modifier.isPublic(constructorModifiers)) {
-                        constructorModifierList.add(Keyword.PUBLIC);
-                    }
-                    if (Modifier.isPrivate(constructorModifiers)) {
-                        constructorModifierList.add(Keyword.PRIVATE);
-                    }
-                    if (Modifier.isProtected(constructorModifiers)) {
-                        constructorModifierList.add(Keyword.PROTECTED);
-                    }
-                    info.setMethodModifiers(constructorModifierList);
-                }
-            }
-        } catch (Exception e) {
-            // 反射失败时，使用默认值
-        }
-        
-        node.setFuncInfo(info);
+        MethodDeclaration method = classParser.parseOutMethodDeclaration(cu, methodName, paramTypes);
+        FuncInfo funcInfo = methodInfoExtractor.extract(method, realClassName, methodName, paramTypes);
+        node.setFuncInfo(funcInfo);
 
         // 设置循环调用标志
         node.setLoopCall(false);
@@ -109,6 +98,5 @@ public class NodeFactory {
 
         return node;
     }
-
 
 }

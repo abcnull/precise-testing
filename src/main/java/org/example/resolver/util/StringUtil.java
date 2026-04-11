@@ -5,7 +5,10 @@ import org.apache.commons.lang3.StringUtils;
 
 public class StringUtil {
     /**
-     * 获取包名
+     * 获取包名 
+     * 
+     * @param className 全限定类名
+     * @return 包名
      */
     public static String getPackageName(String className) {
         if (className == null) {
@@ -19,7 +22,10 @@ public class StringUtil {
     }
 
     /**
-     * 获取简单类名
+     * 获取简单类名，不包含泛型 
+     * 
+     * @param className 全限定类名
+     * @return 简单类名
      */
     public static String getSimpleClassName(String className) {
         if (className == null) {
@@ -38,19 +44,26 @@ public class StringUtil {
     }
 
     /**
-     * 构建方法签名
+     * 构建方法签名 
+     * 
+     * @param className     声明类名（多态场景下的接口或父类）
+     * @param realClassName 真实类名（多态场景下的子类）
+     * @param methodName    方法名
+     * @param paramTypes    参数类型列表，比如 String, int
+     * @return 方法签名
      */
-    public static String buildMethodSignature(String className, String realClassName, String methodName, List<String> paramTypes) {
+    public static String buildMethodSignature(String className, String realClassName, String methodName,
+            List<String> paramTypes) {
         StringBuilder sb = new StringBuilder();
         // 添加声明类名（多态场景下的接口或父类）
         sb.append(getPackageName(className)).append(".");
         sb.append(getSimpleClassName(className)).append("#");
         // 添加真实类名
         sb.append(getPackageName(realClassName)).append(".");
-        sb.append(getSimpleClassName(realClassName)).append(".");
+        sb.append(getSimpleClassName(realClassName)).append("#");
         sb.append(methodName).append("(");
         if (paramTypes != null && !paramTypes.isEmpty()) {
-            sb.append(String.join(",", paramTypes));
+            sb.append(String.join(", ", paramTypes));
         }
         sb.append(")");
         return sb.toString();

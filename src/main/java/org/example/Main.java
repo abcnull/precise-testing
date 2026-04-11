@@ -11,6 +11,9 @@ public class Main {
         // 获取项目根目录
         String projectRoot = System.getProperty("user.dir");
         String sourceRoot = projectRoot + "/src/main/java";
+        // String sourceRoot = "/Users/abcnull/IdeaProjects/springboot-demo/src/main/java";
+        
+        
 
         System.out.println("=======================================");
         System.out.println("       精准测试 - 方法调用链路解析器");
@@ -22,15 +25,19 @@ public class Main {
         // 从 Level1.level1Func 开始解析调用链路
         String startClass = "org.example.callchain.Level1";
         String startMethod = "level1Func";
+        // String startClass = "org.example.springbootdemo.controller.mybatis.MybatisPageController";
+        // String startMethod = "searchStudentByNamePage";
 
         System.out.println("开始解析第一个调用链路...");
         System.out.println("起始方法: " + startClass + "." + startMethod + "(String, int)\n");
+        // System.out.println("起始方法: " + startClass + "." + startMethod + "()\n");
 
         // 解析第一个调用链（org.example.callchain.Level1）
         AstNode rootNode1 = resolver.resolveCallChain(
                 startClass,
                 startMethod,
                 Arrays.asList("String", "int"));
+                // Arrays.asList("String", "int", "int"));
 
         // 打印第一个调用链的树形结构
         System.out.println("=======================================");
