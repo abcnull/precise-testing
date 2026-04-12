@@ -3,7 +3,7 @@ package org.example.rule;
 import java.util.List;
 
 /**
- * 精确测试模式的接口
+ * 精确测试规则的接口
  */
 public interface IPreciseRule {
     PreciseModel getPreciseModel();
@@ -13,4 +13,6 @@ public interface IPreciseRule {
     List<String> getThrownClasses();
 
     List<String> getFilterClasses();
+
+    boolean shouldCreateNode(String className);
 }

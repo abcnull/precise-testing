@@ -2,6 +2,10 @@ package org.example.resolver.model;
 
 import java.util.List;
 
+/**
+ * 参数信息
+ * 用于存储方法调用的参数信息，包括参数类型、参数包名等
+ */
 public class ParameterInfo {
     private final List<String> simpleTypes;
     private final List<String> packageNames;

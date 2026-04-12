@@ -11,16 +11,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang3.StringUtils;
 import org.example.node.field.FuncCate;
 import org.example.node.field.FuncInfo;
 import org.example.resolver.model.ParameterInfo;
 import org.example.resolver.model.ReturnTypeInfo;
 import org.example.resolver.parser.MethodParser;
-import org.example.resolver.util.StringUtil;
+import org.example.util.StringUtil;
 
 import com.github.javaparser.ast.Modifier.Keyword;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.google.common.base.Objects;
 
 /**
  * 专门用于提取 MethodInfo 和 MethodCallInfo 中的信息
@@ -30,7 +30,7 @@ public class MethodInfoExtractor implements InfoExtractor {
     private final MethodParser methodParser = new MethodParser();
 
     /**
-     * 提取方法信息 DONE
+     * 提取方法信息
      * 
      * @param method     方法声明节点
      * @param methodName 方法名
@@ -76,7 +76,7 @@ public class MethodInfoExtractor implements InfoExtractor {
     }
 
     /**
-     * 提取参数信息（简单类型名和包名）DONE
+     * 提取参数信息（简单类型名和包名）
      *
      * @param paramTypes 参数类型列表
      * @return 参数信息
@@ -96,7 +96,7 @@ public class MethodInfoExtractor implements InfoExtractor {
     }
 
     /**
-     * 反射判断是否是 main 方法 DONE
+     * 反射判断是否是 main 方法
      * 
      * @param realClassName 全限定的类名，带有包的类名，比如 java.lang.String
      * @param methodName    方法名
@@ -120,26 +120,20 @@ public class MethodInfoExtractor implements InfoExtractor {
                     method.getModifiers().stream().anyMatch(m -> m.getKeyword() == Keyword.STATIC);
         } else {
             // 方法是 jdk/第三方依赖中的方法
-            try {
-                Class<?> clazz = Class.forName(realClassName);
-                Class<?>[] paramClasses = new Class<?>[paramTypes.size()];
-                for (int i = 0; i < paramTypes.size(); i++) {
-                    paramClasses[i] = toClass(paramTypes.get(i));
-                }
-                Method reflectionMethod = clazz.getMethod(methodName, paramClasses);
-                int modifiers = reflectionMethod.getModifiers();
-                return Modifier.isPublic(modifiers) && Modifier.isStatic(modifiers) &&
-                        reflectionMethod.getReturnType().equals(void.class) &&
-                        reflectionMethod.getParameterCount() == 1 &&
-                        reflectionMethod.getParameterTypes()[0].equals(String[].class);
-            } catch (Exception e) {
+            Method reflectionMethod = getMethodByReflection(realClassName, methodName, paramTypes);
+            if (reflectionMethod == null) {
                 return false;
             }
+            int modifiers = reflectionMethod.getModifiers();
+            return Modifier.isPublic(modifiers) && Modifier.isStatic(modifiers) &&
+                    reflectionMethod.getReturnType().equals(void.class) &&
+                    reflectionMethod.getParameterCount() == 1 &&
+                    reflectionMethod.getParameterTypes()[0].equals(String[].class);
         }
     }
 
     /**
-     * 提取返回值信息（简单类型名和包名）DONE
+     * 提取返回值信息（简单类型名和包名）
      * 
      * @param method        方法声明
      * @param realClassName 全限定的类名，带有包的类名，比如 java.lang.String
@@ -163,26 +157,21 @@ public class MethodInfoExtractor implements InfoExtractor {
                 return new ReturnTypeInfo(simpleReturnType, returnPackageName);
             }
         } else {
-            try {
-                Class<?> clazz = Class.forName(realClassName);
-                Class<?>[] paramClasses = new Class<?>[paramTypes.size()];
-                for (int i = 0; i < paramTypes.size(); i++) {
-                    paramClasses[i] = toClass(paramTypes.get(i));
-                }
-                Method m = clazz.getMethod(methodName, paramClasses);
-                String fullReturnType = m.getReturnType().getName();
-                String simpleReturnType = StringUtil.getSimpleClassName(fullReturnType);
-                String returnPackageName = StringUtil.getPackageName(fullReturnType);
-                return new ReturnTypeInfo(simpleReturnType, returnPackageName);
-            } catch (Exception e) {
+            // jdk/第三方依赖，反射获取返回值类型
+            Method reflectMethod = getMethodByReflection(realClassName, methodName, paramTypes);
+            if (reflectMethod == null) {
                 return new ReturnTypeInfo("", "");
             }
+            String fullReturnType = reflectMethod.getReturnType().getName();
+            String simpleReturnType = StringUtil.getSimpleClassName(fullReturnType);
+            String returnPackageName = StringUtil.getPackageName(fullReturnType);
+            return new ReturnTypeInfo(simpleReturnType, returnPackageName);
         }
 
     }
 
     /**
-     * 提取方法分类 DONE
+     * 提取方法分类
      * 
      * @param method        方法声明
      * @param realClassName 全限定的类名，带有包的类名，比如 java.lang.String
@@ -202,7 +191,7 @@ public class MethodInfoExtractor implements InfoExtractor {
     }
 
     /**
-     * 提取方法修饰符 DONE
+     * 提取方法修饰符
      * 
      * @param method        方法声明
      * @param realClassName 全限定的类名，带有包的类名，比如 java.lang.String
@@ -217,52 +206,51 @@ public class MethodInfoExtractor implements InfoExtractor {
             return methodParser.parseOutMethodModifiers(method);
         } else {
             // 方法是 jdk/第三方依赖中的方法，用反射
-            try {
-                Class<?> clazz = Class.forName(realClassName);
-                Class<?>[] paramClasses = new Class<?>[paramTypes.size()];
-                for (int i = 0; i < paramTypes.size(); i++) {
-                    paramClasses[i] = toClass(paramTypes.get(i));
+            int modifiers;
+            // 构造器方法
+            if (methodName.equals(StringUtil.getSimpleClassName(realClassName))) {
+                Constructor<?> constructor = getConstructorByReflection(realClassName, methodName, paramTypes);
+                if (constructor == null) {
+                    return new ArrayList<>();
                 }
-                int modifiers;
-                // 构造器方法
-                if (methodName.equals(StringUtil.getSimpleClassName(realClassName))) {
-                    modifiers = clazz.getConstructor().getModifiers();
-                } else {
-                    // 普通方法
-                    modifiers = clazz.getMethod(methodName, paramClasses).getModifiers();
+                modifiers = constructor.getModifiers();
+            } else {
+                // 普通方法
+                Method reflectMethod = getMethodByReflection(realClassName, methodName, paramTypes);
+                if (reflectMethod == null) {
+                    return new ArrayList<>();
                 }
-                List<Keyword> keywords = new ArrayList<>();
-                if (Modifier.isPublic(modifiers))
-                    keywords.add(Keyword.PUBLIC);
-                if (Modifier.isProtected(modifiers))
-                    keywords.add(Keyword.PROTECTED);
-                if (Modifier.isPrivate(modifiers))
-                    keywords.add(Keyword.PRIVATE);
-                if (Modifier.isStatic(modifiers))
-                    keywords.add(Keyword.STATIC);
-                if (Modifier.isFinal(modifiers))
-                    keywords.add(Keyword.FINAL);
-                if (Modifier.isAbstract(modifiers))
-                    keywords.add(Keyword.ABSTRACT);
-                if (Modifier.isSynchronized(modifiers))
-                    keywords.add(Keyword.SYNCHRONIZED);
-                if (Modifier.isNative(modifiers))
-                    keywords.add(Keyword.NATIVE);
-                if (Modifier.isStrict(modifiers))
-                    keywords.add(Keyword.STRICTFP);
-                if (Modifier.isTransient(modifiers))
-                    keywords.add(Keyword.TRANSIENT);
-                if (Modifier.isVolatile(modifiers))
-                    keywords.add(Keyword.VOLATILE);
-                return keywords;
-            } catch (Exception e) {
-                return new ArrayList<>();
+                modifiers = reflectMethod.getModifiers();
             }
+            List<Keyword> keywords = new ArrayList<>();
+            if (Modifier.isPublic(modifiers))
+                keywords.add(Keyword.PUBLIC);
+            if (Modifier.isProtected(modifiers))
+                keywords.add(Keyword.PROTECTED);
+            if (Modifier.isPrivate(modifiers))
+                keywords.add(Keyword.PRIVATE);
+            if (Modifier.isStatic(modifiers))
+                keywords.add(Keyword.STATIC);
+            if (Modifier.isFinal(modifiers))
+                keywords.add(Keyword.FINAL);
+            if (Modifier.isAbstract(modifiers))
+                keywords.add(Keyword.ABSTRACT);
+            if (Modifier.isSynchronized(modifiers))
+                keywords.add(Keyword.SYNCHRONIZED);
+            if (Modifier.isNative(modifiers))
+                keywords.add(Keyword.NATIVE);
+            if (Modifier.isStrict(modifiers))
+                keywords.add(Keyword.STRICTFP);
+            if (Modifier.isTransient(modifiers))
+                keywords.add(Keyword.TRANSIENT);
+            if (Modifier.isVolatile(modifiers))
+                keywords.add(Keyword.VOLATILE);
+            return keywords;
         }
     }
 
     /**
-     * 提取方法注解 DONE
+     * 提取方法注解
      * 
      * @param method        方法声明
      * @param realClassName 全限定的类名，带有包的类名，比如 java.lang.String
@@ -277,37 +265,38 @@ public class MethodInfoExtractor implements InfoExtractor {
             return methodParser.parseOutMethodAnnotations(method);
         } else {
             // jdk/第三方依赖中的方法
+            AccessibleObject reflectMethod = null;
+            // 构造器方法
+            if (methodName.equals(StringUtil.getSimpleClassName(realClassName))) {
+                reflectMethod = getConstructorByReflection(realClassName, methodName, paramTypes);
+                if (reflectMethod == null) {
+                    return new HashMap<>();
+                }
+            } else {
+                // 普通方法
+                reflectMethod = getMethodByReflection(realClassName, methodName, paramTypes);
+                if (reflectMethod == null) {
+                    return new HashMap<>();
+                }
+            }
+            Map<String, Map<String, Object>> annotations = new HashMap<>();
             try {
-                Class<?> clazz = Class.forName(realClassName);
-                Class<?>[] paramClasses = new Class<?>[paramTypes.size()];
-                for (int i = 0; i < paramTypes.size(); i++) {
-                    paramClasses[i] = toClass(paramTypes.get(i));
-                }
-                AccessibleObject m = null;
-                // 构造器方法
-                if (methodName.equals(StringUtil.getSimpleClassName(realClassName))) {
-                    m = clazz.getConstructor(paramClasses);
-                } else {
-                    // 普通方法
-                    m = clazz.getMethod(methodName, paramClasses);
-                }
-                Map<String, Map<String, Object>> annotations = new HashMap<>();
-                for (Annotation ann : m.getAnnotations()) {
+                for (Annotation ann : reflectMethod.getAnnotations()) {
                     Map<String, Object> params = new HashMap<>();
                     for (Method annoMethod : ann.annotationType().getDeclaredMethods()) {
                         params.put(annoMethod.getName(), annoMethod.invoke(ann));
                     }
                     annotations.put(ann.annotationType().getSimpleName(), params);
                 }
-                return annotations;
             } catch (Exception e) {
                 return new HashMap<>();
             }
+            return annotations;
         }
     }
 
     /**
-     * 提取方法注释 DONE
+     * 提取方法注释
      * 
      * @param method 方法声明
      * @return 方法注释
@@ -320,7 +309,7 @@ public class MethodInfoExtractor implements InfoExtractor {
     }
 
     /**
-     * 将字符串转换为对应的 Class 类型 DONE
+     * 将字符串转换为对应的 Class 类型
      * 支持基本类型、引用类型、一维/多维数组类型
      * 
      * @param type 类型字符串，比如 "int"、"java.lang.String"、"int[]"、"int[][]"
@@ -357,6 +346,58 @@ public class MethodInfoExtractor implements InfoExtractor {
                 } catch (ClassNotFoundException e) {
                     return Object.class;
                 }
+        }
+    }
+
+    /**
+     * 通过反射获取方法对象
+     * 
+     * @param className  全限定类名，比如 java.lang.String
+     * @param methodName 方法名，比如 "substring"
+     * @param paramTypes 参数类型列表，每个元素是参数类型的全限定名，比如 "int"、"java.lang.String"
+     * @return 对应的方法对象
+     */
+    private Method getMethodByReflection(String className, String methodName, List<String> paramTypes) {
+        if (StringUtils.isBlank(className) || StringUtils.isBlank(methodName)) {
+            return null;
+        }
+        try {
+            Class<?> clazz = Class.forName(className);
+            Class<?>[] paramClasses = new Class<?>[paramTypes.size()];
+            for (int i = 0; i < paramTypes.size(); i++) {
+                paramClasses[i] = toClass(paramTypes.get(i));
+            }
+            return clazz.getMethod(methodName, paramClasses);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 通过反射获取构造器对象
+     * 
+     * @param className  全限定类名，比如 java.lang.String
+     * @param methodName 构造器方法名，比如 "String"
+     * @param paramTypes 参数类型列表，每个元素是参数类型的全限定名，比如 "int"、"java.lang.String"
+     * @return 对应的构造器对象
+     */
+    private Constructor<?> getConstructorByReflection(String className, String methodName, List<String> paramTypes) {
+        if (StringUtils.isBlank(className) || StringUtils.isBlank(methodName)) {
+            return null;
+        }
+        if (!methodName.equals(StringUtil.getSimpleClassName(className))) {
+            return null;
+        }
+
+        try {
+            Class<?> clazz = Class.forName(className);
+            Class<?>[] paramClasses = new Class<?>[paramTypes.size()];
+            for (int i = 0; i < paramTypes.size(); i++) {
+                paramClasses[i] = toClass(paramTypes.get(i));
+            }
+            return clazz.getConstructor(paramClasses);
+        } catch (Exception e) {
+            return null;
         }
     }
 }

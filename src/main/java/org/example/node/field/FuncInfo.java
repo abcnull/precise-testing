@@ -6,10 +6,15 @@ import java.util.Map;
 import com.github.javaparser.ast.Modifier.Keyword;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Data
+/**
+ * 方法信息
+ */
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class FuncInfo {
@@ -39,4 +44,21 @@ public class FuncInfo {
     private String funcReturnPackageName;
     // 方法返回值类型，比如 void, int, String 等
     private String funcReturnType;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
+        FuncInfo funcInfo = (FuncInfo) o;
+        return java.util.Objects.equals(funcName, funcInfo.funcName) &&
+                java.util.Objects.equals(funcParams, funcInfo.funcParams) &&
+                java.util.Objects.equals(funcParamsPackageName, funcInfo.funcParamsPackageName);
+    }
+
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(funcName, funcParams, funcParamsPackageName);
+    }
 }

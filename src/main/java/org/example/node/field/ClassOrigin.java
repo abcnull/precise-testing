@@ -2,7 +2,7 @@ package org.example.node.field;
 
 /**
  * 类来源
- * 项目类/ JDK 类/ 依赖类
+ * 项目类/JDK 类/依赖类
  */
 public enum ClassOrigin {
     PROJECT("project"),

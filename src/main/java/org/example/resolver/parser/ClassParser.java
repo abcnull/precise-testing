@@ -1,19 +1,16 @@
 package org.example.resolver.parser;
 
+import java.util.List;
+
+import org.apache.commons.collections.CollectionUtils;
+import org.example.constant.PathConstant;
+
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.MethodDeclaration;
-import com.github.javaparser.ast.body.ReceiverParameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
-import com.github.javaparser.ast.expr.AnnotationExpr;
-import com.github.javaparser.ast.expr.SimpleName;
 import com.github.javaparser.ast.type.UnknownType;
-import com.github.javaparser.ast.type.VoidType;
-
-import org.apache.commons.collections.CollectionUtils;
-
-import java.util.List;
 
 /**
  * 类解析器
@@ -22,7 +19,7 @@ import java.util.List;
 public class ClassParser {
 
     /**
-     * 获取CompilationUnit中的第一个类型声明 DONE
+     * 获取CompilationUnit中的第一个类型声明
      *
      * @param cu 编译单元
      * @return 第一个类型声明，如果不存在则返回null
@@ -35,7 +32,7 @@ public class ClassParser {
     }
 
     /**
-     * 查找方法声明 DONE
+     * 查找方法声明
      *
      * @param cu         编译单元
      * @param methodName 方法名
@@ -57,23 +54,37 @@ public class ClassParser {
         // 构造器方法
         ConstructorDeclaration constructorDeclaration = parseOutConstructorDeclaration(cu, methodName, paramTypes);
         if (constructorDeclaration != null) {
-            return new MethodDeclaration(
-                    constructorDeclaration.getModifiers(),
-                    constructorDeclaration.getAnnotations(),
-                    constructorDeclaration.getTypeParameters(),
-                    new UnknownType(),
-                    constructorDeclaration.getName(),
-                    constructorDeclaration.getParameters(),
-                    constructorDeclaration.getThrownExceptions(),
-                    constructorDeclaration.getBody(),
-                    constructorDeclaration.getReceiverParameter().orElse(null));
+            return convertConstructor2Method(constructorDeclaration);
         }
 
         return null;
     }
 
     /**
-     * 查找一般方法声明 DONE
+     * 将构造器声明转换为方法声明
+     * 
+     * @param constructorDeclaration 构造器声明
+     * @return 方法声明
+     */
+    private MethodDeclaration convertConstructor2Method(ConstructorDeclaration constructorDeclaration) {
+        MethodDeclaration constructorTransMethod = new MethodDeclaration(
+                constructorDeclaration.getModifiers(),
+                constructorDeclaration.getAnnotations(),
+                constructorDeclaration.getTypeParameters(),
+                new UnknownType(),
+                constructorDeclaration.getName(),
+                constructorDeclaration.getParameters(),
+                constructorDeclaration.getThrownExceptions(),
+                constructorDeclaration.getBody(),
+                constructorDeclaration.getReceiverParameter().orElse(null));
+        // 由于 constructor => method 没有把方法注释带过去
+        constructorTransMethod.setJavadocComment(constructorDeclaration.getJavadocComment().orElse(null))
+                .setComment(constructorDeclaration.getComment().orElse(null));
+        return constructorTransMethod;
+    }
+
+    /**
+     * 查找一般方法声明
      *
      * @param cu         编译单元
      * @param methodName 方法名
@@ -86,31 +97,14 @@ public class ClassParser {
                 .filter(method -> method.getNameAsString().equals(methodName))
                 // 参数数量和类型都匹配时才通过
                 .filter(method -> {
-                    if (method.getParameters().isEmpty() && CollectionUtils.isEmpty(paramTypes)) {
-                        // 无参
-                        return true;
-                    }
-                    if (method.getParameters().size() != paramTypes.size()) {
-                        // 参数数量不匹配
-                        return false;
-                    }
-                    // 逐一比较参数类型（使用简单名称）
-                    for (int i = 0; i < paramTypes.size(); i++) {
-                        String actual = method.getParameter(i).getType().asString();
-                        String expected = paramTypes.get(i);
-                        // 进行更严格的匹配：
-                        if (!typeMatches(actual, expected)) {
-                            return false;
-                        }
-                    }
-                    return true;
+                    return matchesParameters(method, paramTypes);
                 })
                 .findFirst()
                 .orElse(null);
     }
 
     /**
-     * 查找构造器方法声明 DONE
+     * 查找构造器方法声明
      * 
      * @param cu         编译单元
      * @param methodName 构造器方法名
@@ -123,31 +117,43 @@ public class ClassParser {
                 .filter(constructor -> constructor.getNameAsString().equals(methodName))
                 // 参数数量和类型都匹配时才通过
                 .filter(method -> {
-                    if (method.getParameters().isEmpty() && CollectionUtils.isEmpty(paramTypes)) {
-                        // 无参
-                        return true;
-                    }
-                    if (method.getParameters().size() != paramTypes.size()) {
-                        // 参数数量不匹配
-                        return false;
-                    }
-                    // 逐一比较参数类型（使用简单名称）
-                    for (int i = 0; i < paramTypes.size(); i++) {
-                        String actual = method.getParameter(i).getType().asString();
-                        String expected = paramTypes.get(i);
-                        // 进行更严格的匹配：
-                        if (!typeMatches(actual, expected)) {
-                            return false;
-                        }
-                    }
-                    return true;
+                    return matchesParameters(method, paramTypes);
                 })
                 .findFirst()
                 .orElse(null);
     }
 
     /**
-     * 判断实际方法参数类型字符串与期望类型字符串是否匹配。DONE
+     * 检查方法声明或构造器声明的参数类型和提供的参数类型是否逐一匹配
+     * 
+     * @param <T>         方法声明或构造器声明的类型
+     * @param declaration 方法声明或构造器声明
+     * @param paramTypes  参数类型列表，比如：["String", "Object", "int"]
+     * @return 是否匹配
+     */
+    private <T extends CallableDeclaration<?>> boolean matchesParameters(T declaration, List<String> paramTypes) {
+        if (declaration.getParameters().isEmpty() && CollectionUtils.isEmpty(paramTypes)) {
+            // 无参
+            return true;
+        }
+        if (declaration.getParameters().size() != paramTypes.size()) {
+            // 参数数量不匹配
+            return false;
+        }
+        // 逐一比较参数类型（使用简单名称）
+        for (int i = 0; i < paramTypes.size(); i++) {
+            String actual = declaration.getParameter(i).getType().asString();
+            String expected = paramTypes.get(i);
+            // 进行更严格的匹配：
+            if (!typeMatches(actual, expected)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断实际方法参数类型字符串与期望类型字符串是否匹配。
      * 
      * 支持以下情况：
      * 1. 带或不带包名的普通类（如 "java.util.List" 与 "List"）
@@ -169,19 +175,19 @@ public class ClassParser {
         }
 
         // 去掉泛型
-        String actualBase = actual.split("<")[0];
-        String expectedBase = expected.split("<")[0];
+        String actualBase = actual.split(PathConstant.LEFT_ANGLE_BRACKET)[0];
+        String expectedBase = expected.split(PathConstant.LEFT_ANGLE_BRACKET)[0];
 
         // 如果都带有包名，则直接比较
-        if (actualBase.contains(".") && expectedBase.contains(".")) {
+        if (actualBase.contains(PathConstant.POINT) && expectedBase.contains(PathConstant.POINT)) {
             return actualBase.equals(expectedBase);
         }
 
         // 保留类名（去掉包路径）
-        if (actualBase.contains(".")) {
+        if (actualBase.contains(PathConstant.POINT)) {
             actualBase = actualBase.substring(actualBase.lastIndexOf('.') + 1);
         }
-        if (expectedBase.contains(".")) {
+        if (expectedBase.contains(PathConstant.POINT)) {
             expectedBase = expectedBase.substring(expectedBase.lastIndexOf('.') + 1);
         }
         return actualBase.equals(expectedBase);

@@ -22,6 +22,9 @@ import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
 import java.util.Optional;
 
+/**
+ * 类型解析器，用于解析Java类型声明节点（如类、接口、枚举等）
+ */
 public class TypeParser {
     /**
      * 从TypeDeclaration中提取类修饰符（使用JavaParser）DONE
@@ -73,7 +76,7 @@ public class TypeParser {
     }
 
     /**
-     * 提取注解参数值（使用JavaParser） 
+     * 提取注解参数值（使用JavaParser）
      * 
      * @param valueExpr 注解参数表达式
      * @return 注解参数值，支持字符串、整数、布尔值、枚举、数组、类类型等

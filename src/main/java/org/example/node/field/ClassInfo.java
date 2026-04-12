@@ -6,10 +6,15 @@ import java.util.Map;
 import com.github.javaparser.ast.Modifier.Keyword;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Data
+/**
+ * 类信息
+ */
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class ClassInfo {
@@ -38,4 +43,20 @@ public class ClassInfo {
     // 比如 Child implements Parent，当 Parent parent = new Child() 时，parent 对应的
     // className 是 Parent，而 realClassName 是 Child
     private String realClassName;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
+        ClassInfo classInfo = (ClassInfo) o;
+        return java.util.Objects.equals(className, classInfo.className) &&
+                java.util.Objects.equals(realClassName, classInfo.realClassName);
+    }
+
+    @Override
+    public int hashCode() {
+        return java.util.Objects.hash(className, realClassName);
+    }
 }

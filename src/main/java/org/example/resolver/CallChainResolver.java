@@ -9,11 +9,10 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-import org.apache.commons.lang3.StringUtils;
-import org.example.node.AstNode;
+import org.example.constant.PathConstant;
+import org.example.node.DagNode;
 import org.example.node.field.ClassInfo;
 import org.example.node.field.FuncInfo;
-import org.example.node.field.PackageInfo;
 import org.example.resolver.extractor.ClassInfoExtractor;
 import org.example.resolver.extractor.MethodInfoExtractor;
 import org.example.resolver.extractor.PackageInfoExtractor;
@@ -22,10 +21,9 @@ import org.example.resolver.model.MethodCallInfo;
 import org.example.resolver.parser.ClassParser;
 import org.example.resolver.parser.FileParser;
 import org.example.resolver.parser.MethodParser;
-import org.example.resolver.util.StringUtil;
 import org.example.rule.IPreciseRule;
 import org.example.rule.NormalRule;
-import org.example.rule.PreciseModel;
+import org.example.util.StringUtil;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
@@ -49,7 +47,7 @@ public class CallChainResolver {
     private final NodeFactory nodeFactory;
 
     // 节点缓存
-    private final Map<String, AstNode> nodeCache; // 节点缓存，key: 方法唯一标识，value: 对应的AstNode
+    private final Map<String, DagNode> nodeCache; // 节点缓存，key: 方法唯一标识，value: 对应的 DagNode
     private final Set<String> visitedMethods; // 已访问的方法签名集合，用于判定是否循环调用
     private final Map<String, CompilationUnit> parsedFiles; // key: 类全限定名, value: 编译单元
 
@@ -69,7 +67,7 @@ public class CallChainResolver {
     }
 
     /**
-     * 构造函数，初始化解析器组件 DONE
+     * 构造函数，初始化解析器组件
      * 
      * @param sourceRootPath 项目根目录，比如
      *                       /Users/abcnull/IdeaProjects/precise-testing/src/main/java
@@ -90,7 +88,7 @@ public class CallChainResolver {
             File sourceRoot = new File(sourceRootPath);
             if (!sourceRoot.exists()) {
                 // 尝试使用src/main/java作为默认源码目录
-                sourceRoot = new File(sourceRootPath, "src/main/java");
+                sourceRoot = new File(sourceRootPath, PathConstant.JAVA_SOURCE_DIR);
             }
             if (sourceRoot.exists()) {
                 combinedTypeSolver.add(new JavaParserTypeSolver(sourceRoot));
@@ -114,14 +112,14 @@ public class CallChainResolver {
     }
 
     /**
-     * 从指定方法开始解析调用链路 DONE
+     * 从指定方法开始解析调用链路
      *
      * @param className  类全限定名
      * @param methodName 方法名
      * @param paramTypes 参数类型列表，比如 String, int
-     * @return AstNode 调用链树根节点
+     * @return DagNode 调用链树根节点
      */
-    public AstNode resolveCallChain(String className, String methodName, List<String> paramTypes) {
+    public DagNode resolveCallChain(String className, String methodName, List<String> paramTypes) {
         // 用于记录已访问的方法签名，循环调用时，避免重复解析相同方法
         visitedMethods.clear();
         // 每次解析新的调用链时，清空节点缓存
@@ -144,7 +142,7 @@ public class CallChainResolver {
     }
 
     /**
-     * 生成节点的唯一标识符 DONE
+     * 生成节点的唯一标识符
      * 基于方法名、参数类型、realClassName和realPackageName
      * 
      * @param className     类全限定名
@@ -158,20 +156,20 @@ public class CallChainResolver {
     }
 
     /**
-     * 递归解析方法调用 DONE
+     * 递归解析方法调用
      * 
      * @param className     类全限定名
      * @param realClassName 真实全限定类名（考虑多态）
      * @param methodName    方法名
      * @param paramTypes    参数类型列表，比如 String, int
      * @param currentLayer  当前递归层级
-     * @return AstNode 调用链树节点
+     * @return DagNode 调用链树节点
      */
-    private AstNode resolveMethodCall(String className, String realClassName, String methodName,
+    private DagNode resolveMethodCall(String className, String realClassName, String methodName,
             List<String> paramTypes, int currentLayer) {
         /* 检测基本的精准测试模式过滤 */
         // 检查是否应该构造该节点
-        if (!shouldCreateNode(realClassName)) {
+        if (!preciseRule.shouldCreateNode(realClassName)) {
             // 不应该构造节点，直接返回 null
             return null;
         }
@@ -194,14 +192,13 @@ public class CallChainResolver {
             // 如果节点可以复用
             if (nodeCache.containsKey(nodeKey)) {
                 // 节点复用
-                AstNode cachedNode = nodeCache.get(nodeKey);
-                // 只有非循环调用节点可以被复用
-                if (!cachedNode.isLoopCall()) {
+                DagNode cachedNode = getCachedNodeIfAvailable(nodeKey);
+                if (cachedNode != null) {
                     return cachedNode;
                 }
             }
             // 否则创建一个叶子节点返回
-            AstNode leafNode = nodeFactory.createLeafNode(cu, className, realClassName, methodName, paramTypes);
+            DagNode leafNode = nodeFactory.createLeafNode(cu, className, realClassName, methodName, paramTypes);
             if (!leafNode.isLoopCall()) {
                 nodeCache.put(nodeKey, leafNode);
             }
@@ -218,43 +215,21 @@ public class CallChainResolver {
         visitedMethods.add(methodSignature);
 
         /* 检测节点是否可以复用 */
-        // 节点可以复用，直接返回
-        if (nodeCache.containsKey(nodeKey)) {
-            // 节点复用
-            AstNode cachedNode = nodeCache.get(nodeKey);
-            // 只有非循环调用节点可以被复用
-            if (!cachedNode.isLoopCall()) {
-                return cachedNode;
-            }
+        DagNode cachedNode = getCachedNodeIfAvailable(nodeKey);
+        if (cachedNode != null) {
+            return cachedNode;
         }
 
-        /* 创建节点 */
-        // 创建当前节点
-        AstNode currentNode = new AstNode();
-        // 设置包信息
-        PackageInfo packageInfo = packageInfoExtractor.extract(className, realClassName);
-        currentNode.setPackageInfo(packageInfo);
-        // 创建并设置 ClassInfo
-        ClassInfo classInfo = classInfoExtractor.extract(cu, className, realClassName);
-        currentNode.setClassInfo(classInfo);
-        // 创建并设置FuncInfo
-        MethodDeclaration targetMethod = classParser.parseOutMethodDeclaration(cu, methodName, paramTypes);
-        FuncInfo funcInfo = methodInfoExtractor.extract(targetMethod, realClassName, methodName, paramTypes);
-        currentNode.setFuncInfo(funcInfo);
-        // 设置循环调用标志
-        currentNode.setLoopCall(false);
-        // 初始化子节点列表和父节点列表
-        currentNode.setChildren(new ArrayList<>());
-        currentNode.setParents(new ArrayList<>());
-        // 将当前节点加入缓存
-        nodeCache.put(nodeKey, currentNode);
+        /* 创建并初始化节点 */
+        DagNode currentNode = nodeFactory.createAndInitializeNode(cu, className, realClassName, methodName, paramTypes);
 
         /* 递归解析方法调用，DFS */
         // 查找方法体内的所有方法调用
+        MethodDeclaration targetMethod = classParser.parseOutMethodDeclaration(cu, methodName, paramTypes);
         List<MethodCallInfo> methodCalls = methodParser.parseOutMethodCalls(targetMethod);
         // 递归解析每个方法调用，深度优先搜索
         for (MethodCallInfo callInfo : methodCalls) {
-            AstNode childNode = resolveMethodCall(
+            DagNode childNode = resolveMethodCall(
                     callInfo.getClassName(),
                     callInfo.getRealClassName(),
                     callInfo.getMethodName(),
@@ -278,114 +253,26 @@ public class CallChainResolver {
     }
 
     /**
-     * 检查是否应该构造该节点 DONE
+     * 从缓存中获取节点（如果节点可以复用）
      * 
-     * @param realClassName 实际类名
-     * @return 是否应该构造节点
+     * @param nodeKey 节点唯一标识符
+     * @return Node if available, null otherwise
      */
-    private boolean shouldCreateNode(String realClassName) {
-        // 首先检查是否在抛出列表中
-        if (isInThrownClasses(realClassName, preciseRule.getThrownClasses())) {
-            return false;
-        }
-
-        // 再检查是否在过滤列表中
-        if (!isInFilterClasses(realClassName, preciseRule.getFilterClasses())) {
-            return false;
-        }
-
-        // 然后根据模式检查确认是否要包含该类
-        return shouldIncludeByModel(realClassName);
-    }
-
-    /**
-     * 检查类是否在抛出列表中 DONE
-     * 
-     * @param realClassName 全限定类名
-     * @return 是否在抛出列表中
-     */
-    private boolean isInThrownClasses(String realClassName, List<String> thrownClasses) {
-        if (thrownClasses == null || thrownClasses.isEmpty()) {
-            return false;
-        }
-        for (String pattern : thrownClasses) {
-            if (matchesPattern(realClassName, pattern)) {
-                return true;
+    public DagNode getCachedNodeIfAvailable(String nodeKey) {
+        // 节点可以复用，直接返回
+        if (nodeCache.containsKey(nodeKey)) {
+            // 节点复用
+            DagNode cachedNode = nodeCache.get(nodeKey);
+            // 只有非循环调用节点可以被复用
+            if (!cachedNode.isLoopCall()) {
+                return cachedNode;
             }
         }
-        return false;
+        return null;
     }
 
     /**
-     * 检查类是否在过滤列表中 DONE
-     * 
-     * @param realClassName 全限定类名
-     * @return 是否在过滤列表中
-     */
-    private boolean isInFilterClasses(String realClassName, List<String> filterClasses) {
-        if (filterClasses == null || filterClasses.isEmpty()) {
-            return true; // 过滤列表为空，默认包含所有类
-        }
-        for (String pattern : filterClasses) {
-            if (matchesPattern(realClassName, pattern)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 根据模式检查是否应该包含该类 DONE
-     * 
-     * @param realClassName 全限定类名
-     * @return 是否应该包含
-     */
-    private boolean shouldIncludeByModel(String realClassName) {
-        CompilationUnit cu = getOrParseCompilationUnit(realClassName);
-
-        if (preciseRule.getPreciseModel() == PreciseModel.NORMAL) {
-            // NORMAL模式：只包含项目中的类
-            return cu != null;
-        } else if (preciseRule.getPreciseModel() == PreciseModel.WARN_MOD) {
-            // WARN_MOD模式：包含项目中的类和第三方依赖，不包含JDK类
-            if (cu != null) {
-                return true; // 项目中的类
-            }
-            // 检查是否是JDK类
-            String packageName = StringUtil.getPackageName(realClassName);
-            return !packageName.startsWith("java.") && !packageName.startsWith("javax.");
-        } else if (preciseRule.getPreciseModel() == PreciseModel.DANGER_MOD) {
-            // DANGER_MOD模式：包含所有类
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * 检查类名是否匹配模式（支持通配符） DONE
-     * 
-     * @param className 类名
-     * @param pattern   模式
-     * @return 是否匹配
-     */
-    private boolean matchesPattern(String className, String pattern) {
-        if (StringUtils.isBlank(pattern) || StringUtils.isBlank(className))
-            return false;
-
-        // 如果模式不包含通配符，直接进行等值比较
-        if (!pattern.contains("*"))
-            return className.equals(pattern);
-
-        // 将模式转换为正则表达式：点号作为字面量，* 转换为 .*
-        String regex = "^" + pattern.replace(".", "\\.")
-                .replace("*", ".*") + "$";
-
-        return className.matches(regex);
-    }
-
-    /**
-     * 通过获取或解析CompilationUnit DONE
+     * 通过获取或解析CompilationUnit
      * 
      * @param className 全限定类名
      * @return CompilationUnit
@@ -409,7 +296,7 @@ public class CallChainResolver {
      * @param node1 第一个DAG的根节点
      * @param node2 第二个DAG的根节点
      */
-    public void mergeCallChain(AstNode node1, AstNode node2) {
+    public void mergeCallChain(DagNode node1, DagNode node2) {
         // 如果两个节点相同，直接返回
         if (node1 == node2) {
             return;
@@ -426,69 +313,17 @@ public class CallChainResolver {
      * 
      * @param nodes 多个有根DAG的根节点列表
      */
-    public void mergeCallChain(List<AstNode> nodes) {
+    public void mergeCallChain(List<DagNode> nodes) {
         if (nodes == null || nodes.isEmpty()) {
             return;
         }
 
         // 遍历所有DAG的根节点，更新节点缓存
-        for (AstNode node : nodes) {
+        for (DagNode node : nodes) {
             if (node != null) {
                 updateNodeCache(node);
             }
         }
-    }
-
-    /**
-     * 检查两个AstNode是否相同（用于去重）
-     * 
-     * @param node1 第一个节点
-     * @param node2 第二个节点
-     * @return 是否相同
-     */
-    private boolean areNodesEqual(AstNode node1, AstNode node2) {
-        if (node1 == node2)
-            return true;
-        if (node1 == null || node2 == null)
-            return false;
-
-        // 检查isLoopCall
-        if (node1.isLoopCall() != node2.isLoopCall())
-            return false;
-
-        // 检查PackageInfo
-        PackageInfo pkg1 = node1.getPackageInfo();
-        PackageInfo pkg2 = node2.getPackageInfo();
-        if (pkg1 == null || pkg2 == null)
-            return false;
-        if (!Objects.equals(pkg1.getPackageName(), pkg2.getPackageName()))
-            return false;
-        if (!Objects.equals(pkg1.getRealPackageName(), pkg2.getRealPackageName()))
-            return false;
-
-        // 检查ClassInfo
-        ClassInfo cls1 = node1.getClassInfo();
-        ClassInfo cls2 = node2.getClassInfo();
-        if (cls1 == null || cls2 == null)
-            return false;
-        if (!Objects.equals(cls1.getClassName(), cls2.getClassName()))
-            return false;
-        if (!Objects.equals(cls1.getRealClassName(), cls2.getRealClassName()))
-            return false;
-
-        // 检查FuncInfo
-        FuncInfo func1 = node1.getFuncInfo();
-        FuncInfo func2 = node2.getFuncInfo();
-        if (func1 == null || func2 == null)
-            return false;
-        if (!Objects.equals(func1.getFuncName(), func2.getFuncName()))
-            return false;
-        if (!Objects.equals(func1.getFuncParams(), func2.getFuncParams()))
-            return false;
-        if (!Objects.equals(func1.getFuncParamsPackageName(), func2.getFuncParamsPackageName()))
-            return false;
-
-        return true;
     }
 
     /**
@@ -497,7 +332,7 @@ public class CallChainResolver {
      * @param node 节点
      * @return 是否是叶子节点
      */
-    private boolean isLeafNode(AstNode node) {
+    private boolean isLeafNode(DagNode node) {
         if (node == null || node.isLoopCall()) {
             return false;
         }
@@ -505,7 +340,7 @@ public class CallChainResolver {
             return true;
         }
         // 检查是否所有子节点都是循环调用
-        for (AstNode child : node.getChildren()) {
+        for (DagNode child : node.getChildren()) {
             if (!child.isLoopCall()) {
                 return false;
             }
@@ -519,9 +354,9 @@ public class CallChainResolver {
      * @param root 根节点
      * @return 去重后的叶子节点集合
      */
-    public Set<AstNode> findLeaf(AstNode root) {
-        Set<AstNode> leafNodes = new HashSet<>();
-        Set<AstNode> visited = new HashSet<>();
+    public Set<DagNode> findLeaf(DagNode root) {
+        Set<DagNode> leafNodes = new HashSet<>();
+        Set<DagNode> visited = new HashSet<>();
         findLeafNodes(root, leafNodes, visited);
         return leafNodes;
     }
@@ -529,7 +364,7 @@ public class CallChainResolver {
     /**
      * 递归查找叶子节点
      */
-    private void findLeafNodes(AstNode node, Set<AstNode> leafNodes, Set<AstNode> visited) {
+    private void findLeafNodes(DagNode node, Set<DagNode> leafNodes, Set<DagNode> visited) {
         if (node == null || visited.contains(node)) {
             return;
         }
@@ -538,8 +373,8 @@ public class CallChainResolver {
         if (isLeafNode(node)) {
             // 检查是否已存在相同的节点
             boolean exists = false;
-            for (AstNode existingNode : leafNodes) {
-                if (areNodesEqual(node, existingNode)) {
+            for (DagNode existingNode : leafNodes) {
+                if (node.equals(existingNode)) {
                     exists = true;
                     break;
                 }
@@ -551,7 +386,7 @@ public class CallChainResolver {
 
         // 递归处理子节点
         if (node.getChildren() != null) {
-            for (AstNode child : node.getChildren()) {
+            for (DagNode child : node.getChildren()) {
                 findLeafNodes(child, leafNodes, visited);
             }
         }
@@ -569,10 +404,10 @@ public class CallChainResolver {
      * @param params        方法参数
      * @return 符合条件的叶子节点集合
      */
-    public Set<AstNode> findLeaf(AstNode root, String packageName, String realClassName, String funcName,
+    public Set<DagNode> findLeaf(DagNode root, String packageName, String realClassName, String funcName,
             List<String> params) {
-        Set<AstNode> leafNodes = new HashSet<>();
-        Set<AstNode> visited = new HashSet<>();
+        Set<DagNode> leafNodes = new HashSet<>();
+        Set<DagNode> visited = new HashSet<>();
         findLeafNodesByCondition(root, packageName, realClassName, funcName, params, leafNodes, visited);
         return leafNodes;
     }
@@ -580,9 +415,9 @@ public class CallChainResolver {
     /**
      * 递归查找符合条件的叶子节点
      */
-    private void findLeafNodesByCondition(AstNode node, String packageName, String realClassName, String funcName,
-            List<String> params, Set<AstNode> leafNodes,
-            Set<AstNode> visited) {
+    private void findLeafNodesByCondition(DagNode node, String packageName, String realClassName, String funcName,
+            List<String> params, Set<DagNode> leafNodes,
+            Set<DagNode> visited) {
         if (node == null || visited.contains(node)) {
             return;
         }
@@ -591,8 +426,8 @@ public class CallChainResolver {
         if (isLeafNode(node) && matchesCondition(node, packageName, realClassName, funcName, params)) {
             // 检查是否已存在相同的节点
             boolean exists = false;
-            for (AstNode existingNode : leafNodes) {
-                if (areNodesEqual(node, existingNode)) {
+            for (DagNode existingNode : leafNodes) {
+                if (node.equals(existingNode)) {
                     exists = true;
                     break;
                 }
@@ -604,7 +439,7 @@ public class CallChainResolver {
 
         // 递归处理子节点
         if (node.getChildren() != null) {
-            for (AstNode child : node.getChildren()) {
+            for (DagNode child : node.getChildren()) {
                 findLeafNodesByCondition(child, packageName, realClassName, funcName, params, leafNodes, visited);
             }
         }
@@ -622,10 +457,10 @@ public class CallChainResolver {
      * @param params        方法参数
      * @return 符合条件的节点集合
      */
-    public Set<AstNode> findNode(AstNode root, String packageName, String realClassName, String funcName,
+    public Set<DagNode> findNode(DagNode root, String packageName, String realClassName, String funcName,
             List<String> params) {
-        Set<AstNode> nodes = new HashSet<>();
-        Set<AstNode> visited = new HashSet<>();
+        Set<DagNode> nodes = new HashSet<>();
+        Set<DagNode> visited = new HashSet<>();
         findNodesByCondition(root, packageName, realClassName, funcName, params, nodes, visited);
         return nodes;
     }
@@ -633,9 +468,9 @@ public class CallChainResolver {
     /**
      * 递归查找符合条件的所有节点
      */
-    private void findNodesByCondition(AstNode node, String packageName, String realClassName, String funcName,
-            List<String> params, Set<AstNode> nodes,
-            Set<AstNode> visited) {
+    private void findNodesByCondition(DagNode node, String packageName, String realClassName, String funcName,
+            List<String> params, Set<DagNode> nodes,
+            Set<DagNode> visited) {
         if (node == null || visited.contains(node)) {
             return;
         }
@@ -644,8 +479,8 @@ public class CallChainResolver {
         if (matchesCondition(node, packageName, realClassName, funcName, params)) {
             // 检查是否已存在相同的节点
             boolean exists = false;
-            for (AstNode existingNode : nodes) {
-                if (areNodesEqual(node, existingNode)) {
+            for (DagNode existingNode : nodes) {
+                if (node.equals(existingNode)) {
                     exists = true;
                     break;
                 }
@@ -657,7 +492,7 @@ public class CallChainResolver {
 
         // 递归处理子节点
         if (node.getChildren() != null) {
-            for (AstNode child : node.getChildren()) {
+            for (DagNode child : node.getChildren()) {
                 findNodesByCondition(child, packageName, realClassName, funcName, params, nodes, visited);
             }
         }
@@ -668,7 +503,7 @@ public class CallChainResolver {
     /**
      * 检查节点是否符合条件
      */
-    private boolean matchesCondition(AstNode node, String packageName, String realClassName, String funcName,
+    private boolean matchesCondition(DagNode node, String packageName, String realClassName, String funcName,
             List<String> params) {
         if (node == null || node.getPackageInfo() == null || node.getClassInfo() == null
                 || node.getFuncInfo() == null) {
@@ -722,7 +557,7 @@ public class CallChainResolver {
      * @param node 起始节点
      * @return 链路字符串列表
      */
-    public List<String> reverseCallChainStr(AstNode node) {
+    public List<String> reverseCallChainStr(DagNode node) {
         List<String> result = new ArrayList<>();
         if (node == null) {
             return result;
@@ -738,7 +573,7 @@ public class CallChainResolver {
         }
 
         // 递归处理每个父节点
-        for (AstNode parent : node.getParents()) {
+        for (DagNode parent : node.getParents()) {
             // 避免循环
             if (parent.isLoopCall()) {
                 continue;
@@ -762,7 +597,7 @@ public class CallChainResolver {
      * @param node 节点
      * @return 格式化后的字符串
      */
-    private String formatNodeToString(AstNode node) {
+    private String formatNodeToString(DagNode node) {
         if (node == null || node.getPackageInfo() == null || node.getClassInfo() == null
                 || node.getFuncInfo() == null) {
             return "";
@@ -771,7 +606,7 @@ public class CallChainResolver {
         // 构建包名和类名
         String packageName = node.getPackageInfo().getRealPackageName();
         String className = node.getClassInfo().getRealClassName();
-        String fullClassName = packageName.isEmpty() ? className : packageName + "." + className;
+        String fullClassName = packageName.isEmpty() ? className : packageName + PathConstant.POINT + className;
 
         // 构建方法名和参数
         String methodName = node.getFuncInfo().getFuncName();
@@ -787,7 +622,7 @@ public class CallChainResolver {
      * @param node 起始节点
      * @return 出口节点信息列表
      */
-    public List<String> reverseLeavesName(AstNode node) {
+    public List<String> reverseLeavesName(DagNode node) {
         List<String> result = new ArrayList<>();
         if (node == null) {
             return result;
@@ -812,7 +647,7 @@ public class CallChainResolver {
     /**
      * 遍历DAG并更新节点缓存
      */
-    private void updateNodeCache(AstNode node) {
+    private void updateNodeCache(DagNode node) {
         if (node == null || node.isLoopCall()) {
             return;
         }
@@ -822,17 +657,17 @@ public class CallChainResolver {
         String realClassName = node.getClassInfo().getRealClassName();
         String packageName = node.getPackageInfo().getPackageName();
         String realPackageName = node.getPackageInfo().getRealPackageName();
-        String fullClassName = packageName.isEmpty() ? className : packageName + "." + className;
-        String fullRealClassName = realPackageName.isEmpty() ? realClassName : realPackageName + "." + realClassName;
+        String fullClassName = packageName.isEmpty() ? className : packageName + PathConstant.POINT + className;
+        String fullRealClassName = realPackageName.isEmpty() ? realClassName : realPackageName + PathConstant.POINT + realClassName;
         String methodName = node.getFuncInfo().getFuncName();
         List<String> paramTypes = node.getFuncInfo().getFuncParams();
         String nodeKey = generateNodeKey(fullClassName, fullRealClassName, methodName, paramTypes);
 
         // 如果缓存中已存在该节点，需要合并
         if (nodeCache.containsKey(nodeKey)) {
-            AstNode cachedNode = nodeCache.get(nodeKey);
+            DagNode cachedNode = nodeCache.get(nodeKey);
             // 合并子节点
-            for (AstNode child : node.getChildren()) {
+            for (DagNode child : node.getChildren()) {
                 if (!cachedNode.getChildren().contains(child)) {
                     cachedNode.getChildren().add(child);
                     // 更新子节点的父节点列表
@@ -845,7 +680,7 @@ public class CallChainResolver {
                 }
             }
             // 合并父节点
-            for (AstNode parent : node.getParents()) {
+            for (DagNode parent : node.getParents()) {
                 if (!cachedNode.getParents().contains(parent)) {
                     cachedNode.getParents().add(parent);
                     // 更新父节点的子节点列表
@@ -860,8 +695,8 @@ public class CallChainResolver {
         }
 
         // 递归处理子节点（创建副本避免 ConcurrentModificationException）
-        List<AstNode> childrenCopy = new ArrayList<>(node.getChildren());
-        for (AstNode child : childrenCopy) {
+        List<DagNode> childrenCopy = new ArrayList<>(node.getChildren());
+        for (DagNode child : childrenCopy) {
             updateNodeCache(child);
         }
     }
@@ -881,18 +716,18 @@ public class CallChainResolver {
     }
 
     /**
-     * 打印AST树（从当前节点向下遍历子节点）
+     * 打印 DAG 树（从当前节点向下遍历子节点）
      * 
      * @param node 起始节点
      */
-    public void printTree(AstNode node) {
+    public void printTree(DagNode node) {
         printTreeRecursive(node, 0, true, "");
     }
 
     /**
-     * 递归打印AST树
+     * 递归打印 DAG 树
      */
-    private void printTreeRecursive(AstNode node, int depth, boolean isLast, String prefix) {
+    private void printTreeRecursive(DagNode node, int depth, boolean isLast, String prefix) {
         if (node == null || node.getFuncInfo() == null) {
             return;
         }
@@ -917,18 +752,18 @@ public class CallChainResolver {
     }
 
     /**
-     * 打印反向AST树（从当前节点向上遍历父节点）
+     * 打印反向 DAG 树（从当前节点向上遍历父节点）
      * 
      * @param node 起始节点
      */
-    public void printReverseTree(AstNode node) {
+    public void printReverseTree(DagNode node) {
         printReverseTreeRecursive(node, 0, true, "");
     }
 
     /**
-     * 递归打印反向AST树
+     * 递归打印反向 DAG 树
      */
-    private void printReverseTreeRecursive(AstNode node, int depth, boolean isLast, String prefix) {
+    private void printReverseTreeRecursive(DagNode node, int depth, boolean isLast, String prefix) {
         if (node == null || node.getFuncInfo() == null) {
             return;
         }
@@ -955,7 +790,7 @@ public class CallChainResolver {
     /**
      * 构建方法签名字符串（用于打印）
      */
-    private String buildMethodSignatureForPrint(AstNode node) {
+    private String buildMethodSignatureForPrint(DagNode node) {
         if (node == null || node.getFuncInfo() == null) {
             return "";
         }
@@ -975,7 +810,7 @@ public class CallChainResolver {
         String returnType = info.getFuncReturnType();
         String returnPackage = info.getFuncReturnPackageName();
         if (!"void".equals(returnType) && returnPackage != null && !returnPackage.isEmpty()) {
-            sb.append(returnPackage).append(".").append(returnType);
+            sb.append(returnPackage).append(PathConstant.POINT).append(returnType);
         } else {
             sb.append(returnType);
         }
@@ -997,7 +832,7 @@ public class CallChainResolver {
         sb.append(info.getFuncName());
 
         // 参数列表
-        sb.append("(");
+        sb.append(PathConstant.LEFT_BRACKET);
         if (info.getFuncParams() != null && !info.getFuncParams().isEmpty()) {
             List<String> fullParams = new ArrayList<>();
             List<String> params = info.getFuncParams();

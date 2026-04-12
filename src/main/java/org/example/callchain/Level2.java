@@ -96,4 +96,14 @@ public class Level2 {
     public String myTest(String name) {
         return "myTest";
     }
+
+    /**
+     * 测试多态
+     * @param a
+     * @return
+     */
+    @Deprecated
+    public String myTest2(ParentInterface a) {
+        return "myTest";
+    }
 }

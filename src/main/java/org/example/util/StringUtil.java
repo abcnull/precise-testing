@@ -1,11 +1,15 @@
-package org.example.resolver.util;
+package org.example.util;
 
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
+import org.example.constant.PathConstant;
 
+/**
+ * 字符串工具类
+ */
 public class StringUtil {
     /**
-     * 获取包名 
+     * 获取包名
      * 
      * @param className 全限定类名
      * @return 包名
@@ -22,7 +26,7 @@ public class StringUtil {
     }
 
     /**
-     * 获取简单类名，不包含泛型 
+     * 获取简单类名，不包含泛型
      * 
      * @param className 全限定类名
      * @return 简单类名
@@ -44,7 +48,7 @@ public class StringUtil {
     }
 
     /**
-     * 构建方法签名 
+     * 构建方法签名
      * 
      * @param className     声明类名（多态场景下的接口或父类）
      * @param realClassName 真实类名（多态场景下的子类）
@@ -56,16 +60,16 @@ public class StringUtil {
             List<String> paramTypes) {
         StringBuilder sb = new StringBuilder();
         // 添加声明类名（多态场景下的接口或父类）
-        sb.append(getPackageName(className)).append(".");
-        sb.append(getSimpleClassName(className)).append("#");
+        sb.append(getPackageName(className)).append(PathConstant.POINT);
+        sb.append(getSimpleClassName(className)).append(PathConstant.HYP_SHARP);
         // 添加真实类名
-        sb.append(getPackageName(realClassName)).append(".");
-        sb.append(getSimpleClassName(realClassName)).append("#");
-        sb.append(methodName).append("(");
+        sb.append(getPackageName(realClassName)).append(PathConstant.POINT);
+        sb.append(getSimpleClassName(realClassName)).append(PathConstant.HYP_SHARP);
+        sb.append(methodName).append(PathConstant.LEFT_BRACKET);
         if (paramTypes != null && !paramTypes.isEmpty()) {
-            sb.append(String.join(", ", paramTypes));
+            sb.append(String.join(PathConstant.HYP_PARAM_SEPARATOR1, paramTypes));
         }
-        sb.append(")");
+        sb.append(PathConstant.RIGHT_BRACKET);
         return sb.toString();
     }
 
@@ -81,7 +85,7 @@ public class StringUtil {
             return className.equals(pattern);
 
         // 将模式转换为正则表达式：点号作为字面量，* 转换为 .*
-        String regex = "^" + pattern.replace(".", "\\.")
+        String regex = "^" + pattern.replace(PathConstant.POINT, "\\.")
                 .replace("*", ".*") + "$";
 
         return className.matches(regex);

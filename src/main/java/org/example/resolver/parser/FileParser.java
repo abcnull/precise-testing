@@ -8,6 +8,8 @@ import java.io.FileNotFoundException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+import org.example.constant.PathConstant;
+
 /**
  * 文件解析器
  * 专门去解析文件
@@ -23,7 +25,7 @@ public class FileParser {
     }
 
     /**
-     * 从指定的源码根目录解析类文件，返回对应的 CompilationUnit。 DONE
+     * 从指定的源码根目录解析类文件，返回对应的 CompilationUnit。 
      * 支持在源码根目录直接查找或在src/main/java子目录查找。
      *
      * @param className 全限定类名
@@ -34,13 +36,13 @@ public class FileParser {
             return null;
         }
 
-        String relativePath = className.replace(".", "/") + ".java";
+        String relativePath = className.replace(PathConstant.POINT, PathConstant.SLASH) + ".java";
 
         Path filePath = Paths.get(sourceRootPath, relativePath);
         File file = filePath.toFile();
 
-        if (!file.exists() && !sourceRootPath.endsWith("src/main/java")) {
-            Path altPath = Paths.get(sourceRootPath, "src/main/java", relativePath);
+        if (!file.exists() && !sourceRootPath.endsWith(PathConstant.JAVA_SOURCE_DIR)) {
+            Path altPath = Paths.get(sourceRootPath, PathConstant.JAVA_SOURCE_DIR, relativePath);
             file = altPath.toFile();
         }
 
