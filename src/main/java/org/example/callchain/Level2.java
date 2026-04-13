@@ -106,4 +106,8 @@ public class Level2 {
     public String myTest2(ParentInterface a) {
         return "myTest";
     }
+
+    public String test_leve1(String a) {
+        return "test_leve1";
+    }
 }

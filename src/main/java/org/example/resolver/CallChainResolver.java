@@ -17,6 +17,9 @@ import org.example.resolver.extractor.ClassInfoExtractor;
 import org.example.resolver.extractor.MethodInfoExtractor;
 import org.example.resolver.extractor.PackageInfoExtractor;
 import org.example.resolver.factory.NodeFactory;
+import org.example.resolver.guesser.ClassGuesser;
+import org.example.resolver.guesser.ClassInfoGuesser;
+import org.example.resolver.model.MethodBelongs2Class;
 import org.example.resolver.model.MethodCallInfo;
 import org.example.resolver.parser.ClassParser;
 import org.example.resolver.parser.FileParser;
@@ -62,6 +65,9 @@ public class CallChainResolver {
     private final ClassInfoExtractor classInfoExtractor; // 类信息提取器
     private final MethodInfoExtractor methodInfoExtractor; // 方法信息提取器
 
+    // 猜测器
+    private final ClassInfoGuesser classInfoGuesser; // 类信息猜测器
+
     public CallChainResolver(String sourceRootPath) {
         this(sourceRootPath, new NormalRule());
     }
@@ -82,6 +88,7 @@ public class CallChainResolver {
 
         // 配置类型解析器
         CombinedTypeSolver combinedTypeSolver = new CombinedTypeSolver();
+        // 添加JDK库
         combinedTypeSolver.add(new ReflectionTypeSolver());
         // 添加JavaParserTypeSolver来解析项目中的自定义类
         try {
@@ -91,6 +98,7 @@ public class CallChainResolver {
                 sourceRoot = new File(sourceRootPath, PathConstant.JAVA_SOURCE_DIR);
             }
             if (sourceRoot.exists()) {
+                // 添加项目源代码
                 combinedTypeSolver.add(new JavaParserTypeSolver(sourceRoot));
             }
         } catch (Exception e) {
@@ -109,6 +117,8 @@ public class CallChainResolver {
         this.packageInfoExtractor = new PackageInfoExtractor();
         this.classInfoExtractor = new ClassInfoExtractor();
         this.methodInfoExtractor = new MethodInfoExtractor();
+
+        this.classInfoGuesser = new ClassInfoGuesser();
     }
 
     /**
@@ -178,8 +188,15 @@ public class CallChainResolver {
         String methodSignature = buildMethodSignature(className, realClassName, methodName, paramTypes);
         // 生成节点唯一标识并检查缓存
         String nodeKey = generateNodeKey(className, realClassName, methodName, paramTypes);
-        // realClassName 编译单元
-        CompilationUnit cu = getOrParseCompilationUnit(realClassName);
+
+        // 编译单元
+        CompilationUnit cu = getOrParseCompilationUnit(realClassName); // 真实类的 cu
+        CompilationUnit parentCu = null; // 多态场景下方法不一定都来自 cu，也有可能来自 parentCu
+        if (!realClassName.equals(className)) {
+            parentCu = getOrParseCompilationUnit(className);
+        }
+        MethodBelongs2Class fromClass = classInfoGuesser.guessMethodFormClass(parentCu, parentCu,
+                className, realClassName, methodName, paramTypes); // 猜测方法来源的类
 
         /* 检测是否达到最大深度 */
         // 检查是达到最大层数，创建叶子节点
@@ -658,7 +675,8 @@ public class CallChainResolver {
         String packageName = node.getPackageInfo().getPackageName();
         String realPackageName = node.getPackageInfo().getRealPackageName();
         String fullClassName = packageName.isEmpty() ? className : packageName + PathConstant.POINT + className;
-        String fullRealClassName = realPackageName.isEmpty() ? realClassName : realPackageName + PathConstant.POINT + realClassName;
+        String fullRealClassName = realPackageName.isEmpty() ? realClassName
+                : realPackageName + PathConstant.POINT + realClassName;
         String methodName = node.getFuncInfo().getFuncName();
         List<String> paramTypes = node.getFuncInfo().getFuncParams();
         String nodeKey = generateNodeKey(fullClassName, fullRealClassName, methodName, paramTypes);

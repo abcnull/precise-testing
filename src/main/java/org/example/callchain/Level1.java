@@ -105,6 +105,13 @@ public class Level1 extends Level1Parant {
         // FanXing<Level2> fanxinging = new FanXing();
         // fanxinging.end(fanxinging);
 
+        /**
+         * 问题：
+         * 1.如果被调用方法入参类型是第三方依赖类型，则分析不出来该被调用方法的参数类型
+         * 2.如果被调用方法入参中含有第三方依赖的表达式，比如StringUtils.isBlank("d")，也分析不出来该被调用方法的参数类型
+         * 3.
+         */
+
 
         /**
          * 测试用例：func(参数);
@@ -118,7 +125,13 @@ public class Level1 extends Level1Parant {
         // this.test_leve1("ddd");
         // super.getLevel1Parent(test_leve1("ddd"));
         // level2.myTest("3232");
-        test_leve1(StringUtils.isBlank("3"));
+        // StringUtils a = new StringUtils();
+        // Level2 a = new Level2("l", 0);
+        // test_leve1(StringUtils.isBlank("d"));
+        // level2.test_leve1("");
+        // Level1Parant a = new Level1();
+        // a.getLevel1Parent("");
+        StringUtils.isBlank("e3");
 
 
         /**
@@ -155,9 +168,9 @@ public class Level1 extends Level1Parant {
         return "level1Func";
     }
 
-    public String test_leve1(boolean a) {
-        return "test_leve1";
-    }
+    // public String test_leve1(StringUtils a) {
+    //     return "test_leve1";
+    // }
 
     public Boolean test_boolean() {
         return true;

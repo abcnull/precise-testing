@@ -46,15 +46,15 @@ public class ClassInfoExtractor implements InfoExtractor {
         classInfo.setClassOrigin(classOrigin);
 
         // 设置类修饰符
-        List<Keyword> classModifiers = extractClassModifiers(cu, className);
+        List<Keyword> classModifiers = extractClassModifiers(cu, realClassName);
         classInfo.setClassModifiers(classModifiers);
 
         // 设置类注解
-        Map<String, Map<String, Object>> annotations = extractClassAnnotations(cu, className);
+        Map<String, Map<String, Object>> annotations = extractClassAnnotations(cu, realClassName);
         classInfo.setAnnotations(annotations);
 
         // 设置类注释
-        String classComment = extractClassComments(cu, className);
+        String classComment = extractClassComments(cu, realClassName);
         classInfo.setClassComment(classComment);
 
         // 设置类声明
@@ -90,7 +90,7 @@ public class ClassInfoExtractor implements InfoExtractor {
      * @param className 全限定类名
      * @return 类修饰符列表
      */
-    private List<Keyword> extractClassModifiers(CompilationUnit cu, String className) {
+    public List<Keyword> extractClassModifiers(CompilationUnit cu, String className) {
         // cu 是项目中的类
         if (cu != null) {
             TypeDeclaration<?> typeDecl = classParser.getFirstTypeDeclaration(cu);
@@ -231,7 +231,7 @@ public class ClassInfoExtractor implements InfoExtractor {
      * @param className 全限定类名
      * @return 类声明
      */
-    private ClassDeclaration extractClassDeclaration(CompilationUnit cu, String className) {
+    public ClassDeclaration extractClassDeclaration(CompilationUnit cu, String className) {
         if (cu != null) {
             TypeDeclaration<?> typeDecl = classParser.getFirstTypeDeclaration(cu);
             if (typeDecl != null) {

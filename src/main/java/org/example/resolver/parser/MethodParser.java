@@ -14,6 +14,7 @@ import com.github.javaparser.ast.expr.NormalAnnotationExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.expr.SingleMemberAnnotationExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.resolution.MethodUsage;
 import com.github.javaparser.resolution.declarations.ResolvedConstructorDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 
@@ -171,7 +172,7 @@ public class MethodParser {
         // 遍历方法体内的所有表达式，查找方法调用表达式
         method.findAll(Expression.class).forEach(expr -> {
             if (expr.isMethodCallExpr()) {
-                // 方法调用表达式
+                // 方法调用表达式 callExpr.getArgument(0).calculateResolvedType().describe();
                 MethodCallExpr callExpr = expr.asMethodCallExpr();
                 try {
                     // 解析方法调用表达式，获取方法声明
@@ -265,6 +266,16 @@ public class MethodParser {
                     calls.add(
                             new MethodCallInfo(fullDeclaringClass, realFullDeclaringClass[0], methodName, paramTypes));
                 } catch (Exception e) {
+                    /**
+                     * 情况1: 当解析某个第三方依赖的表达式时
+                     * 
+                     * 情况2: 当JavaParser尝试解析test_leve1(StringUtils.isBlank("3"))，其中参数含有第三方依赖的类
+                     * 首先解析StringUtils.isBlank("3")的返回类型，然后才能确定test_leve1方法的参数类型
+                     * 
+                     * 问题是：由于StringUtils不在classpath中，无法找到该类，无法确定isBlank方法是否存在，也无法确定其返回类型
+                     * 因此无法推断test_leve1方法应该接收什么类型的参数
+                     * 最终导致callExpr.resolve()抛出异常
+                     */
                     String methodName = callExpr.getNameAsString();
                     String[] inferredClass = { inferClassNameFromCall(callExpr, finalMethod) };
                     String[] realInferredClass = { inferredClass[0] };
@@ -355,9 +366,11 @@ public class MethodParser {
                     List<String> paramTypes = new ArrayList<>();
                     callExpr.getArguments().forEach(arg -> {
                         try {
-                            paramTypes.add(arg.calculateResolvedType().describe());
+                            // paramTypes.add(arg.calculateResolvedType().describe());
+                            paramTypes.add("UNKNOWN");
                         } catch (Exception ex) {
-                            paramTypes.add(arg.toString());
+                            // paramTypes.add(arg.toString());
+                            paramTypes.add("UNKNOWN");
                         }
                     });
 
