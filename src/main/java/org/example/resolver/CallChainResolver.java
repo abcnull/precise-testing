@@ -2,6 +2,7 @@ package org.example.resolver;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -9,24 +10,23 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.example.constant.PathConstant;
 import org.example.node.DagNode;
 import org.example.node.field.ClassInfo;
 import org.example.node.field.FuncInfo;
-import org.example.resolver.extractor.ClassInfoExtractor;
-import org.example.resolver.extractor.MethodInfoExtractor;
-import org.example.resolver.extractor.PackageInfoExtractor;
 import org.example.resolver.factory.NodeFactory;
-import org.example.resolver.guesser.ClassGuesser;
 import org.example.resolver.guesser.ClassInfoGuesser;
 import org.example.resolver.model.MethodBelongs2Class;
 import org.example.resolver.model.MethodCallInfo;
-import org.example.resolver.parser.ClassParser;
+import org.example.resolver.parser.CompilationUnitParser;
 import org.example.resolver.parser.FileParser;
-import org.example.resolver.parser.MethodParser;
+import org.example.resolver.parser.MethodDeclParser;
 import org.example.rule.IPreciseRule;
 import org.example.rule.NormalRule;
-import org.example.util.StringUtil;
+import org.example.util.PackStrUtil;
+import org.example.util.SignatureUtil;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
@@ -43,6 +43,8 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeS
 public class CallChainResolver {
     // 项目根目录，比如 /Users/abcnull/IdeaProjects/precise-testing/src/main/java
     private final String sourceRootPath;
+    private final Set<String> allPackStr; // sourceRootPath 下所有的包路径集合
+    private final List<String> typeResolverPathes; // 符号解析路径
     // 精确规则，用于过滤调用链路
     private final IPreciseRule preciseRule;
 
@@ -53,70 +55,83 @@ public class CallChainResolver {
     private final Map<String, DagNode> nodeCache; // 节点缓存，key: 方法唯一标识，value: 对应的 DagNode
     private final Set<String> visitedMethods; // 已访问的方法签名集合，用于判定是否循环调用
     private final Map<String, CompilationUnit> parsedFiles; // key: 类全限定名, value: 编译单元
+    // 是否连通，默认 false，即不连通，即每个方法都是独立的调用链路；true 表示连通，当创建多个 DAG 后，即做到多个 DAG
+    // 可以复用相同节点，做到连通
+    private final boolean isConnected;
 
     // 解析器
     private final JavaParser javaParser; // 用于解析Java源文件
     private final FileParser fileParser; // 文件解析器
-    private final ClassParser classParser; // 方法解析器
-    private final MethodParser methodParser; // 参数解析器
-
-    // 抽取器
-    private final PackageInfoExtractor packageInfoExtractor; // 包信息提取器
-    private final ClassInfoExtractor classInfoExtractor; // 类信息提取器
-    private final MethodInfoExtractor methodInfoExtractor; // 方法信息提取器
+    private final CompilationUnitParser classParser; // 方法解析器
+    private final MethodDeclParser methodParser; // 参数解析器
 
     // 猜测器
     private final ClassInfoGuesser classInfoGuesser; // 类信息猜测器
 
+    // 默认不连通，即创建多个 DAG 后，DAG 分别独立存在，即使有共同的节点，也无法做到节点复用，即不连通
     public CallChainResolver(String sourceRootPath) {
-        this(sourceRootPath, new NormalRule());
+        this(sourceRootPath, Collections.singletonList(sourceRootPath), new NormalRule(), false);
     }
 
     /**
      * 构造函数，初始化解析器组件
      * 
-     * @param sourceRootPath 项目根目录，比如
-     *                       /Users/abcnull/IdeaProjects/precise-testing/src/main/java
-     * @param preciseRule    精确规则，用于过滤调用链路
+     * @param sourceRootPath   项目根目录，比如
+     *                         /Users/abcnull/IdeaProjects/precise-testing/src/main/java
+     * @param typeResolverPathes 符号解析路径，比如
+     *                         /Users/abcnull/IdeaProjects/precise-testing/src/main/java
+     * @param preciseRule      精确规则，用于过滤调用链路
+     * @param isConnected      是否连通，默认 false，即不连通，即每个方法都是独立的调用链路；true 表示连通，当创建多个 DAG
+     *                         后，即能做到多个 DAG 连通
+     * @return 调用链解析器实例
      */
-    public CallChainResolver(String sourceRootPath, IPreciseRule preciseRule) {
+    public CallChainResolver(String sourceRootPath, List<String> typeResolverPathes, IPreciseRule preciseRule,
+            boolean isConnected) {
         this.sourceRootPath = sourceRootPath;
+        if (StringUtils.isBlank(sourceRootPath)) {
+            throw new IllegalArgumentException("sourceRootPath is blank");
+        }
+        this.allPackStr = PackStrUtil.getAllPackStrFromProject(sourceRootPath);
+        if (CollectionUtils.isEmpty(allPackStr)) {
+            throw new IllegalArgumentException("sourceRootPath is not a valid project root");
+        }
+        this.typeResolverPathes = typeResolverPathes;
         this.parsedFiles = new HashMap<>();
         this.visitedMethods = new HashSet<>();
         this.nodeCache = new HashMap<>();
         this.preciseRule = preciseRule;
+        this.isConnected = isConnected;
 
         // 配置类型解析器
         CombinedTypeSolver combinedTypeSolver = new CombinedTypeSolver();
         // 添加JDK库
         combinedTypeSolver.add(new ReflectionTypeSolver());
         // 添加JavaParserTypeSolver来解析项目中的自定义类
-        try {
-            File sourceRoot = new File(sourceRootPath);
-            if (!sourceRoot.exists()) {
-                // 尝试使用src/main/java作为默认源码目录
-                sourceRoot = new File(sourceRootPath, PathConstant.JAVA_SOURCE_DIR);
+        if (CollectionUtils.isNotEmpty(typeResolverPathes)) {
+            for (String path : typeResolverPathes) {
+                try {
+                    File pathFile = new File(path);
+                    if (pathFile.exists()) {
+                        // 添加项目源代码
+                        combinedTypeSolver.add(new JavaParserTypeSolver(pathFile));
+                    }
+                } catch (Exception e) {
+                    // 忽略异常，继续使用ReflectionTypeSolver
+                }
             }
-            if (sourceRoot.exists()) {
-                // 添加项目源代码
-                combinedTypeSolver.add(new JavaParserTypeSolver(sourceRoot));
-            }
-        } catch (Exception e) {
-            // 忽略异常，继续使用ReflectionTypeSolver
         }
         // 配置JavaParser
         ParserConfiguration config = new ParserConfiguration()
                 .setSymbolResolver(new JavaSymbolSolver(combinedTypeSolver));
         this.javaParser = new JavaParser(config);
 
-        this.fileParser = new FileParser(javaParser, sourceRootPath);
-        this.classParser = new ClassParser();
-        this.methodParser = new MethodParser();
+        FileParser.init(sourceRootPath, javaParser);
+        this.fileParser = FileParser.getInstance();
+        this.classParser = new CompilationUnitParser();
+        // 用单例
+        this.methodParser = new MethodDeclParser();
 
         this.nodeFactory = new NodeFactory();
-        this.packageInfoExtractor = new PackageInfoExtractor();
-        this.classInfoExtractor = new ClassInfoExtractor();
-        this.methodInfoExtractor = new MethodInfoExtractor();
 
         this.classInfoGuesser = new ClassInfoGuesser();
     }
@@ -128,27 +143,40 @@ public class CallChainResolver {
      * @param methodName 方法名
      * @param paramTypes 参数类型列表，比如 String, int
      * @return DagNode 调用链树根节点
+     * @throws Exception
      */
-    public DagNode resolveCallChain(String className, String methodName, List<String> paramTypes) {
-        // 用于记录已访问的方法签名，循环调用时，避免重复解析相同方法
-        visitedMethods.clear();
-        // 每次解析新的调用链时，清空节点缓存
-        nodeCache.clear();
-
-        // 获取或解析源文件，获取完整的参数类型
-        CompilationUnit cu = getOrParseCompilationUnit(className);
-        if (cu != null) {
-            // 查找目标方法
-            MethodDeclaration targetMethod = classParser.parseOutMethodDeclaration(cu, methodName, paramTypes);
-            if (targetMethod != null) {
-                // 使用完整参数类型重新构建方法签名，含有包名
-                List<String> fullParamTypes = methodParser.parseOutFullParamTypes(targetMethod);
-                // 递归解析方法调用，初始层级为1
-                return resolveMethodCall(className, className, methodName, fullParamTypes, 1);
+    public DagNode resolveCallChain(String className, String methodName, List<String> paramTypes) throws Exception {
+        try {
+            // 获取或解析源文件，获取完整的参数类型
+            CompilationUnit targetCu = getOrParseCompilationUnit(className);
+            if (targetCu != null) {
+                // 查找目标方法
+                MethodDeclaration targetMethod = classParser.parseOutMethodDeclaration(targetCu,
+                        MethodBelongs2Class.REAL_CLASS, methodName, paramTypes);
+                if (targetMethod != null) {
+                    // 使用完整参数类型重新构建方法签名，含有包名
+                    List<String> fullParamTypes = methodParser.parseOutFullParamTypes(targetMethod);
+                    // 递归解析方法调用，初始层级为1
+                    return resolveMethodCall(className, className, methodName, fullParamTypes, 1);
+                }
+            }
+            return resolveMethodCall(className, className, methodName, paramTypes, 1);
+        } catch (Exception e) {
+            // 异常直接抛出
+            throw new Exception(e);
+        } finally {
+            if (!isConnected) {
+                // 如果不要求不连通，就每次结束后，清除掉缓存节点，避免占用内存
+                release();
             }
         }
+    }
 
-        return resolveMethodCall(className, className, methodName, paramTypes, 1);
+    // 此方法用于清理 CallChainResolver 内的环境，快速正确的释放资源
+    public void release() {
+        nodeCache.clear(); // 清空节点缓存
+        visitedMethods.clear(); // 清空已访问的方法签名
+        parsedFiles.clear(); // 清空已解析的源文件缓存
     }
 
     /**
@@ -162,16 +190,16 @@ public class CallChainResolver {
      * @return 节点唯一标识符
      */
     private String generateNodeKey(String className, String realClassName, String methodName, List<String> paramTypes) {
-        return StringUtil.buildMethodSignature(className, realClassName, methodName, paramTypes);
+        return SignatureUtil.buildMethodSignature(className, realClassName, methodName, paramTypes);
     }
 
     /**
      * 递归解析方法调用
      * 
-     * @param className     类全限定名
-     * @param realClassName 真实全限定类名（考虑多态）
+     * @param className     声明类全限定名
+     * @param realClassName 真实实现类的全限定类名（考虑多态）
      * @param methodName    方法名
-     * @param paramTypes    参数类型列表，比如 String, int
+     * @param paramTypes    参数类型列表，比如 java.lang.String, int
      * @param currentLayer  当前递归层级
      * @return DagNode 调用链树节点
      */
@@ -179,8 +207,7 @@ public class CallChainResolver {
             List<String> paramTypes, int currentLayer) {
         /* 检测基本的精准测试模式过滤 */
         // 检查是否应该构造该节点
-        if (!preciseRule.shouldCreateNode(realClassName)) {
-            // 不应该构造节点，直接返回 null
+        if (!preciseRule.shouldCreateNode(realClassName, allPackStr, currentLayer)) {
             return null;
         }
 
@@ -192,20 +219,24 @@ public class CallChainResolver {
         // 编译单元
         CompilationUnit cu = getOrParseCompilationUnit(realClassName); // 真实类的 cu
         CompilationUnit parentCu = null; // 多态场景下方法不一定都来自 cu，也有可能来自 parentCu
-        if (!realClassName.equals(className)) {
+        if (className != null && !className.equals(realClassName)) {
             parentCu = getOrParseCompilationUnit(className);
         }
-        MethodBelongs2Class fromClass = classInfoGuesser.guessMethodFormClass(parentCu, parentCu,
+        MethodBelongs2Class fromClass = classInfoGuesser.guessMethodFormClass(parentCu, cu,
                 className, realClassName, methodName, paramTypes); // 猜测方法来源的类
 
         /* 检测是否达到最大深度 */
         // 检查是达到最大层数，创建叶子节点
-        int maxLayer = preciseRule.getMaxLayer();
+        int maxLayer = preciseRule.getMaxLayer(); // 要求的最大深度
         if (currentLayer >= maxLayer) {
             // 如果有循环调用
             if (visitedMethods.contains(methodSignature)) {
-                return nodeFactory.createCycleNode(cu, className, realClassName, methodName, paramTypes);
+                return nodeFactory.createCycleNode(parentCu, cu, fromClass, className, realClassName, methodName,
+                        paramTypes);
             }
+            // 检测完，没有循环调用就 add 此节点记录访问过
+            visitedMethods.add(methodSignature);
+            // 没有循环调用
             // 如果节点可以复用
             if (nodeCache.containsKey(nodeKey)) {
                 // 节点复用
@@ -214,8 +245,9 @@ public class CallChainResolver {
                     return cachedNode;
                 }
             }
-            // 否则创建一个叶子节点返回
-            DagNode leafNode = nodeFactory.createLeafNode(cu, className, realClassName, methodName, paramTypes);
+            // 复用节点没找到，创建一个叶子节点返回
+            DagNode leafNode = nodeFactory.createLeafNode(parentCu, cu, fromClass, className, realClassName, methodName,
+                    paramTypes);
             if (!leafNode.isLoopCall()) {
                 nodeCache.put(nodeKey, leafNode);
             }
@@ -226,9 +258,10 @@ public class CallChainResolver {
         // 检测循环调用
         if (visitedMethods.contains(methodSignature)) {
             // 创建循环调用节点
-            return nodeFactory.createCycleNode(cu, className, realClassName, methodName, paramTypes);
+            return nodeFactory.createCycleNode(parentCu, cu, fromClass, className, realClassName, methodName,
+                    paramTypes);
         }
-        // 检测完，没有循环调用就 add
+        // 检测完，没有循环调用就 add 此节点记录访问过
         visitedMethods.add(methodSignature);
 
         /* 检测节点是否可以复用 */
@@ -238,19 +271,19 @@ public class CallChainResolver {
         }
 
         /* 创建并初始化节点 */
-        DagNode currentNode = nodeFactory.createAndInitializeNode(cu, className, realClassName, methodName, paramTypes);
+        DagNode currentNode = nodeFactory.createAndInitializeNode(parentCu, cu, fromClass, className, realClassName,
+                methodName, paramTypes);
 
         /* 递归解析方法调用，DFS */
         // 查找方法体内的所有方法调用
-        MethodDeclaration targetMethod = classParser.parseOutMethodDeclaration(cu, methodName, paramTypes);
+        CompilationUnit targetCu = gainTargetCompilationUnit(parentCu, cu, fromClass); // 获取方法对应的真正的编译单元
+        MethodDeclaration targetMethod = classParser.parseOutMethodDeclaration(targetCu, fromClass, methodName,
+                paramTypes);
         List<MethodCallInfo> methodCalls = methodParser.parseOutMethodCalls(targetMethod);
         // 递归解析每个方法调用，深度优先搜索
         for (MethodCallInfo callInfo : methodCalls) {
-            DagNode childNode = resolveMethodCall(
-                    callInfo.getClassName(),
-                    callInfo.getRealClassName(),
-                    callInfo.getMethodName(),
-                    callInfo.getParamTypes(),
+            DagNode childNode = resolveMethodCall(callInfo.getClassName(), callInfo.getRealClassName(),
+                    callInfo.getMethodName(), callInfo.getParamTypes(),
                     currentLayer + 1);
             // 只有当子节点不为 null 时，才将其添加到父节点的 children 列表中
             if (childNode != null) {
@@ -265,8 +298,29 @@ public class CallChainResolver {
         }
 
         /* 回溯：移除当前方法 */
+        // 因为当前节点，以及所有子节点访问完了，需要向上回溯了，当前节点对应的方法要从“访问记录”中清除，表示已经经过的节点中不含有此方法名
         visitedMethods.remove(methodSignature); // 表示该节点要返回，访问记录中没有它
         return currentNode;
+    }
+
+    /**
+     * 多态场景下，找到方法来源的真实的类
+     * 
+     * @param parentCu  父类编译单元
+     * @param cu        子类编译单元
+     * @param fromClass 所属类
+     * @return 目标编译单元
+     */
+    private CompilationUnit gainTargetCompilationUnit(CompilationUnit parentCu, CompilationUnit cu,
+            MethodBelongs2Class fromClass) {
+        // 选择编译单元进行抽取数据
+        CompilationUnit targetCu = null;
+        if (fromClass == MethodBelongs2Class.REAL_CLASS) {
+            targetCu = cu;
+        } else if (fromClass == MethodBelongs2Class.DECL_CLASS) {
+            targetCu = parentCu;
+        }
+        return targetCu;
     }
 
     /**
@@ -276,6 +330,10 @@ public class CallChainResolver {
      * @return Node if available, null otherwise
      */
     public DagNode getCachedNodeIfAvailable(String nodeKey) {
+        if (StringUtils.isBlank(nodeKey)) {
+            return null;
+        }
+
         // 节点可以复用，直接返回
         if (nodeCache.containsKey(nodeKey)) {
             // 节点复用
@@ -289,12 +347,16 @@ public class CallChainResolver {
     }
 
     /**
-     * 通过获取或解析CompilationUnit
+     * 通过获取或解析 CompilationUnit
      * 
      * @param className 全限定类名
      * @return CompilationUnit
      */
     private CompilationUnit getOrParseCompilationUnit(String className) {
+        if (StringUtils.isBlank(className)) {
+            return null;
+        }
+
         if (parsedFiles.containsKey(className)) {
             return parsedFiles.get(className);
         }
@@ -305,42 +367,6 @@ public class CallChainResolver {
             parsedFiles.put(className, cu);
         }
         return cu;
-    }
-
-    /**
-     * 合并两个方法调用有根DAG为一个更大的无环图
-     * 
-     * @param node1 第一个DAG的根节点
-     * @param node2 第二个DAG的根节点
-     */
-    public void mergeCallChain(DagNode node1, DagNode node2) {
-        // 如果两个节点相同，直接返回
-        if (node1 == node2) {
-            return;
-        }
-
-        // 遍历第一个DAG的所有节点，更新节点缓存
-        updateNodeCache(node1);
-        // 遍历第二个DAG的所有节点，更新节点缓存
-        updateNodeCache(node2);
-    }
-
-    /**
-     * 合并多个有根DAG为一个更大的有向无环图
-     * 
-     * @param nodes 多个有根DAG的根节点列表
-     */
-    public void mergeCallChain(List<DagNode> nodes) {
-        if (nodes == null || nodes.isEmpty()) {
-            return;
-        }
-
-        // 遍历所有DAG的根节点，更新节点缓存
-        for (DagNode node : nodes) {
-            if (node != null) {
-                updateNodeCache(node);
-            }
-        }
     }
 
     /**
@@ -623,14 +649,16 @@ public class CallChainResolver {
         // 构建包名和类名
         String packageName = node.getPackageInfo().getRealPackageName();
         String className = node.getClassInfo().getRealClassName();
-        String fullClassName = packageName.isEmpty() ? className : packageName + PathConstant.POINT + className;
+        String fullClassName = packageName.isEmpty() ? className : packageName + PathConstant.DOT + className;
 
         // 构建方法名和参数
         String methodName = node.getFuncInfo().getFuncName();
         java.util.List<String> params = node.getFuncInfo().getFuncParams();
-        String paramsStr = params != null && !params.isEmpty() ? String.join(", ", params) : "";
+        String paramsStr = params != null && !params.isEmpty() ? String.join(PathConstant.HYP_PARAM_SEPARATOR1, params)
+                : "";
 
-        return fullClassName + "#" + methodName + "(" + paramsStr + ")";
+        return fullClassName + PathConstant.HYP_SHARP + methodName + PathConstant.LEFT_BRACKET + paramsStr
+                + PathConstant.RIGHT_BRACKET;
     }
 
     /**
@@ -662,64 +690,6 @@ public class CallChainResolver {
     }
 
     /**
-     * 遍历DAG并更新节点缓存
-     */
-    private void updateNodeCache(DagNode node) {
-        if (node == null || node.isLoopCall()) {
-            return;
-        }
-
-        // 生成节点唯一标识
-        String className = node.getClassInfo().getClassName();
-        String realClassName = node.getClassInfo().getRealClassName();
-        String packageName = node.getPackageInfo().getPackageName();
-        String realPackageName = node.getPackageInfo().getRealPackageName();
-        String fullClassName = packageName.isEmpty() ? className : packageName + PathConstant.POINT + className;
-        String fullRealClassName = realPackageName.isEmpty() ? realClassName
-                : realPackageName + PathConstant.POINT + realClassName;
-        String methodName = node.getFuncInfo().getFuncName();
-        List<String> paramTypes = node.getFuncInfo().getFuncParams();
-        String nodeKey = generateNodeKey(fullClassName, fullRealClassName, methodName, paramTypes);
-
-        // 如果缓存中已存在该节点，需要合并
-        if (nodeCache.containsKey(nodeKey)) {
-            DagNode cachedNode = nodeCache.get(nodeKey);
-            // 合并子节点
-            for (DagNode child : node.getChildren()) {
-                if (!cachedNode.getChildren().contains(child)) {
-                    cachedNode.getChildren().add(child);
-                    // 更新子节点的父节点列表
-                    if (child.getParents() == null) {
-                        child.setParents(new ArrayList<>());
-                    }
-                    if (!child.getParents().contains(cachedNode)) {
-                        child.getParents().add(cachedNode);
-                    }
-                }
-            }
-            // 合并父节点
-            for (DagNode parent : node.getParents()) {
-                if (!cachedNode.getParents().contains(parent)) {
-                    cachedNode.getParents().add(parent);
-                    // 更新父节点的子节点列表
-                    if (!parent.getChildren().contains(cachedNode)) {
-                        parent.getChildren().add(cachedNode);
-                    }
-                }
-            }
-        } else {
-            // 将节点加入缓存
-            nodeCache.put(nodeKey, node);
-        }
-
-        // 递归处理子节点（创建副本避免 ConcurrentModificationException）
-        List<DagNode> childrenCopy = new ArrayList<>(node.getChildren());
-        for (DagNode child : childrenCopy) {
-            updateNodeCache(child);
-        }
-    }
-
-    /**
      * 构建方法签名
      * 
      * @param className     声明类名（多态场景下的接口或父类）
@@ -730,7 +700,7 @@ public class CallChainResolver {
      */
     private String buildMethodSignature(String className, String realClassName, String methodName,
             List<String> paramTypes) {
-        return StringUtil.buildMethodSignature(className, realClassName, methodName, paramTypes);
+        return SignatureUtil.buildMethodSignature(className, realClassName, methodName, paramTypes);
     }
 
     /**
@@ -828,7 +798,7 @@ public class CallChainResolver {
         String returnType = info.getFuncReturnType();
         String returnPackage = info.getFuncReturnPackageName();
         if (!"void".equals(returnType) && returnPackage != null && !returnPackage.isEmpty()) {
-            sb.append(returnPackage).append(PathConstant.POINT).append(returnType);
+            sb.append(returnPackage).append(PathConstant.DOT).append(returnType);
         } else {
             sb.append(returnType);
         }
@@ -840,10 +810,10 @@ public class CallChainResolver {
             packageName = node.getPackageInfo().getPackageName();
         }
         if (packageName != null && !packageName.isEmpty()) {
-            sb.append(packageName).append(".");
+            sb.append(packageName).append(PathConstant.DOT);
         }
         if (classInfo != null) {
-            sb.append(classInfo.getClassName()).append("#");
+            sb.append(classInfo.getDeclClassName()).append(PathConstant.HYP_SHARP);
         }
 
         // 方法名
@@ -864,14 +834,14 @@ public class CallChainResolver {
                                 : "";
 
                 if (!paramPackage.isEmpty()) {
-                    fullParams.add(paramPackage + "." + param);
+                    fullParams.add(paramPackage + PathConstant.DOT + param);
                 } else {
                     fullParams.add(param);
                 }
             }
-            sb.append(String.join(", ", fullParams));
+            sb.append(String.join(PathConstant.HYP_PARAM_SEPARATOR1, fullParams));
         }
-        sb.append(")");
+        sb.append(PathConstant.RIGHT_BRACKET);
 
         // 循环调用标记
         if (node.isLoopCall()) {

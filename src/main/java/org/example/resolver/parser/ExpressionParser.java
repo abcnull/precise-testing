@@ -183,8 +183,10 @@ public class ExpressionParser {
         String paramStr = parseOutTypeStrFromExpr(expr);
 
         // 去泛型
-        if (paramStr != null && paramStr.contains(PathConstant.LEFT_ANGLE_BRACKET)) {
-            paramStr = paramStr.substring(0, paramStr.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+        if (paramStr != null) {
+            paramStr = paramStr.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                    ? paramStr.substring(0, paramStr.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                    : paramStr;
         }
         return paramStr;
     }
@@ -217,8 +219,10 @@ public class ExpressionParser {
         String className = parseOutBaseClassFromClassExpr(classExpr);
 
         // 去掉泛型
-        if (className != null && className.contains(PathConstant.LEFT_ANGLE_BRACKET)) {
-            className = className.substring(0, className.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+        if (className != null) {
+            className = className.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                    ? className.substring(0, className.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                    : className;
         }
 
         return className;

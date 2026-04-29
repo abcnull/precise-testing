@@ -95,8 +95,10 @@ public class VariableDeclParser {
             return null;
         }
         // 去掉泛型
-        if (varTypeName != null && varTypeName.contains(PathConstant.LEFT_ANGLE_BRACKET)) {
-            varTypeName = varTypeName.substring(0, varTypeName.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+        if (varTypeName != null) {
+            varTypeName = varTypeName.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                    ? varTypeName.substring(0, varTypeName.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                    : varTypeName;
         }
         // User.Person -> User$Person
         if (varTypeName.contains(PathConstant.DOT)) {
@@ -144,8 +146,10 @@ public class VariableDeclParser {
         }
         String varTypeName = var.getType().resolve().describe();
         // 去掉泛型
-        if (varTypeName != null && varTypeName.contains(PathConstant.LEFT_ANGLE_BRACKET)) {
-            varTypeName = varTypeName.substring(0, varTypeName.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+        if (varTypeName != null) {
+            varTypeName = varTypeName.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                    ? varTypeName.substring(0, varTypeName.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                    : varTypeName;
         }
         return varTypeName;
     }

@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.google.common.base.Strings;
 import com.google.common.primitives.Chars;
 
 import javafx.beans.binding.StringBinding;
@@ -16,6 +17,8 @@ import org.example.callchain.parentclass.ParentClass;
 import org.example.callchain.parentclass.ParentInterface;
 import org.example.util.StringUtil;
 import org.example.callchain.FanXing;
+import org.example.callchain.ForthLevel3;
+import org.example.callchain.demoenum.DemoEnum;
 
 /**
  * 测试类 Level1
@@ -32,13 +35,16 @@ public class Level1 extends Level1Parant {
      * @param age
      * @return
      */
-    public String level1Func() {
+    public String level1Func(String name, int age) {
+
+        // System.out.println("level1Func");
+
 
         // 测试普通类
         /*
          * 测试完全普通的类
          */
-        // org.example.callchain.Level2 level2 = new Level2(name, age);
+        // org.example.callchain.Level2 level2 = new org.example.callchain.Level2(name, age);
         // java.lang.String str = level2.myTest(name);
 
         /*
@@ -120,18 +126,43 @@ public class Level1 extends Level1Parant {
          * 测试用例：类属性.func(参数)
          */
         // Level3 level3 = new Level3();
-        // Level2 level2 = new Level2("");
+        // // Level2 level2 = new Level2("");
         // level3.test_level3(Integer.valueOf(12));
-        // this.test_leve1("ddd");
-        // super.getLevel1Parent(test_leve1("ddd"));
+
+        // Level1 level1 = new Level1();
+        // ParentInterface parentInterface = new ForthLevel3();
+
+
+        // if (true) {
+        //     String level3 = "";
+        // }
+
+        // org.example.callchain2.Level3 level3 = new org.example.callchain2.Level2("");
+
+        // level3.level3Func(true);
+        // level3.level3Func(StringUtils.isBlank("d"));
+
+        // StringUtils.isBlank("");
+
+        // parentInterface.parentInterfaceFunc(StringUtils.strip(""), 2);
+        // test_leve1(StringUtils.isBlank("d"));
+
+        // super.getLevel1Parent(test_leve1(true));
         // level2.myTest("3232");
         // StringUtils a = new StringUtils();
         // Level2 a = new Level2("l", 0);
-        // test_leve1(StringUtils.isBlank("d"));
+        // test_boolean(StringUtils.isBlank("d"));
+        // StringUtils.isBlank("d");
+        // ParentInterface a = new ForthLevel3();
+        // a.parentInterfaceFunc(StringUtils.strip(""), 2);
         // level2.test_leve1("");
         // Level1Parant a = new Level1();
         // a.getLevel1Parent("");
-        StringUtils.isBlank("e3");
+        // StringUtils.isBlank("e3");
+
+        /**
+         * 🌞🌞 测试直接在方法中写父类方法，参数用了第三方依赖，看下为啥不行
+         */
 
 
         /**
@@ -145,9 +176,9 @@ public class Level1 extends Level1Parant {
         // org.example.callchain2.Level2("");
         // level22.level2Func();
 
-        // Level2 level2 = new Level2(name, age);
+        Level2 level2 = new Level2(name, age);
         // // 测试基础的方法调用链路分析
-        // level2.level2_1Func(name, age);
+        level2.level2_1Func(name, age).equals("23");
         // // 测试类 extends
         // level2.level2_2Func(name);
         // // 测试类 extends abstract 类
@@ -172,7 +203,7 @@ public class Level1 extends Level1Parant {
     //     return "test_leve1";
     // }
 
-    public Boolean test_boolean() {
+    public Boolean test_boolean(Boolean a) {
         return true;
     }
 }

@@ -147,7 +147,9 @@ public class ClassStrUtil {
         // 不含有 .
         if (!className.contains(PathConstant.DOT)) {
             // 去掉泛型
-            return className.substring(0, className.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+            return className.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                    ? className.substring(0, className.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                    : className;
         }
 
         String[] segs = className.split(PathConstant.ESCAPE_DOT);
@@ -213,7 +215,8 @@ public class ClassStrUtil {
         // 处理泛型类型，找到泛型参数的开始位置
         int genericStart = className.indexOf(PathConstant.CHAR_LEFT_ANGLE_BRACKET);
         // 找到最后一个点的位置，在泛型参数之前
-        int lastDot = genericStart > 0 ? className.lastIndexOf(PathConstant.CHAR_DOT, genericStart) : className.lastIndexOf(PathConstant.CHAR_DOT);
+        int lastDot = genericStart > 0 ? className.lastIndexOf(PathConstant.CHAR_DOT, genericStart)
+                : className.lastIndexOf(PathConstant.CHAR_DOT);
         return lastDot > 0 ? className.substring(0, lastDot) : "";
     }
 

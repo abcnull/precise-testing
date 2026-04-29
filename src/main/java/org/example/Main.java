@@ -1,14 +1,16 @@
 package org.example;
 
 import java.util.Arrays;
+import java.util.Collections;
 
 import org.apache.commons.lang3.StringUtils;
 import org.example.callchain2.MyCustomRule;
 import org.example.node.DagNode;
 import org.example.resolver.CallChainResolver;
+import org.example.resolver.print.PrintDag;
 
 public class Main {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         // 获取项目根目录
         String projectRoot = System.getProperty("user.dir");
         String sourceRoot = projectRoot + "/src/main/java";
@@ -21,7 +23,7 @@ public class Main {
         System.out.println("=======================================\n");
 
         // 创建解析器
-        CallChainResolver resolver = new CallChainResolver(sourceRoot, new MyCustomRule());
+        CallChainResolver resolver = new CallChainResolver(sourceRoot, Collections.singletonList(sourceRoot), new MyCustomRule(), true);
 
         // 从 Level1.level1Func 开始解析调用链路
         String startClass = "org.example.callchain.Level1";
@@ -37,8 +39,11 @@ public class Main {
         DagNode rootNode1 = resolver.resolveCallChain(
                 startClass,
                 startMethod,
-                Arrays.asList());
-                // Arrays.asList("String", "int", "int"));
+                // Arrays.asList());
+                Arrays.asList("java.lang.String", "int"));
+
+                PrintDag printDag = new PrintDag();
+                printDag.printSimpleCallChains(rootNode1);
 
         // 打印第一个调用链的树形结构
         System.out.println("=======================================");

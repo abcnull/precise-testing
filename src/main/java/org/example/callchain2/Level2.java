@@ -4,7 +4,7 @@ package org.example.callchain2;
  * 二级类
  */
 @Deprecated
-public class Level2 {
+public class Level2 extends Level3 {
 
     /**
      * 构造器

@@ -49,4 +49,8 @@ public class WordConstant {
     public final static String ANN_REPOSITORY = "Repository";
     // 注解: Configuration
     public final static String ANN_CONFIGURATION = "Configuration";
+
+    // 打印 [循环调用]
+    public final static String LOOP_CALL = "[循环调用]";
+
 }

@@ -444,4 +444,22 @@ public class CompilationUnitParser {
                 }).collect(Collectors.toList());
         return constructorList;
     }
+
+    /**
+     * 从 CompilationUnit 中获取绝对路径
+     * 注意：前提 cu 是由 javaparser.parse(File) 文件形式创建的，否则返回 null
+     * 
+     * @param cu 编译单元
+     * @return 绝对路径字符串
+     */
+    public String parseOutAbsolutePathFromCu(CompilationUnit cu) {
+        if (cu == null) {
+            return null;
+        }
+        // 前提 cu 是由 javaparser.parse(File) 文件形式创建的，否则返回 null
+        return cu.getStorage()
+                .map(storage -> storage.getPath().toAbsolutePath().toString())
+                .orElse(null);
+
+    }
 }

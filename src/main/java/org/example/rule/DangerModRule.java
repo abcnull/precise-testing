@@ -1,6 +1,7 @@
 package org.example.rule;
 
 import java.util.List;
+import java.util.Set;
 
 import lombok.Getter;
 
@@ -31,7 +32,7 @@ public class DangerModRule implements IPreciseRule {
      * @return 是否应该构造节点
      */
     @Override
-    public boolean shouldCreateNode(String realClassName) {
+    public boolean shouldCreateNode(String realClassName, Set<String> allPackStr, int currentLayer) {
         return true;
     }
 }

@@ -21,6 +21,7 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.Modifier.Keyword;
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.Node.TreeTraversal;
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
@@ -276,8 +277,12 @@ public class MethodDeclParser {
                         }
                     }
                     // 去泛型
-                    return fieldType.toString().substring(0,
-                            fieldType.toString().indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+                    if (fieldType.toString().contains(PathConstant.LEFT_ANGLE_BRACKET)) {
+                        return fieldType.toString().substring(0,
+                                fieldType.toString().indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+                    } else {
+                        return fieldType.toString();
+                    }
                 }
             }
             parent = parent.get().getParentNode();
@@ -342,8 +347,12 @@ public class MethodDeclParser {
                         }
                     }
                     // 去泛型
-                    return fieldType.toString().substring(0,
-                            fieldType.toString().indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+                    if (fieldType.toString().contains(PathConstant.LEFT_ANGLE_BRACKET)) {
+                        return fieldType.toString().substring(0,
+                                fieldType.toString().indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+                    } else {
+                        return fieldType.toString();
+                    }
                 }
             }
         }
@@ -869,7 +878,9 @@ public class MethodDeclParser {
             if (ClassStrUtil.isNestedClassName(scopeStr)) {
                 // import 能找到 User
                 String firstSeg = scopeStr.split(PathConstant.ESCAPE_DOT)[0];
-                firstSeg = firstSeg.substring(0, firstSeg.indexOf(PathConstant.LEFT_ANGLE_BRACKET)); // 已经不带有泛型
+                firstSeg = firstSeg.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                        ? firstSeg.substring(0, firstSeg.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                        : firstSeg; // 已经不带有泛型
                 // scopeStr 中去掉了 firstSeg 的部分，包含了 $，不带有泛型
                 String otherSegStr = ClassStrUtil.transInnerClass2DollarWithNoGeneric(scopeStr)
                         .substring(firstSeg.length());
@@ -1077,7 +1088,9 @@ public class MethodDeclParser {
             if (ClassStrUtil.isNestedClassName(scopeStr)) {
                 // import 能找到 User
                 String firstSeg = scopeStr.split(PathConstant.ESCAPE_DOT)[0];
-                firstSeg = firstSeg.substring(0, firstSeg.indexOf(PathConstant.LEFT_ANGLE_BRACKET)); // 已经不带有泛型
+                firstSeg = firstSeg.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                        ? firstSeg.substring(0, firstSeg.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                        : firstSeg; // 已经不带有泛型
                 // scopeStr 中去掉了 firstSeg 的部分，包含了 $，不带有泛型
                 String otherSegStr = ClassStrUtil.transInnerClass2DollarWithNoGeneric(scopeStr)
                         .substring(firstSeg.length());
@@ -1373,9 +1386,11 @@ public class MethodDeclParser {
                     String fullClassName = (packageName.isEmpty() || typeName.contains(PathConstant.DOT)) ? typeName
                             : packageName + PathConstant.DOT + typeName;
                     // 去除泛型
-                    if (fullClassName != null && fullClassName.contains(PathConstant.LEFT_ANGLE_BRACKET)) {
-                        fullClassName = fullClassName.substring(0,
-                                fullClassName.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+                    if (fullClassName != null) {
+                        fullClassName = fullClassName.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                                ? fullClassName.substring(0,
+                                        fullClassName.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                                : fullClassName;
                     }
                     return fullClassName;
                 })
@@ -1505,8 +1520,16 @@ public class MethodDeclParser {
      * @return 是否为枚举类型, null 表示未知，true 表示是，false 表示否
      */
     private Boolean isEnumType(String fullClassName) {
+        if (StringUtils.isBlank(fullClassName)) {
+            return null;
+        }
+
         // 简单类名
-        String simpleName = fullClassName.substring(fullClassName.lastIndexOf(PathConstant.DOT) + 1);
+        String simpleName = fullClassName;
+        if (fullClassName.contains(PathConstant.DOT)) {
+            simpleName = fullClassName.substring(fullClassName.lastIndexOf(PathConstant.DOT) + 1);
+        }
+        final String finalSimpleName = simpleName;
 
         CompilationUnit cu = getFileParser().parseOutCompilationUnit(fullClassName);
         if (cu == null) {
@@ -1514,7 +1537,7 @@ public class MethodDeclParser {
         }
 
         Optional<EnumDeclaration> enumDecl = cu.findFirst(EnumDeclaration.class,
-                ed -> ed.getNameAsString().equals(simpleName));
+                ed -> ed.getNameAsString().equals(finalSimpleName));
         if (enumDecl == null) {
             return false;
         }

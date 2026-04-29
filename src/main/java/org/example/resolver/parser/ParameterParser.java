@@ -31,8 +31,10 @@ public class ParameterParser {
             return null;
         }
         String typeStr = param.getType().resolve().describe();
-        if (typeStr != null && typeStr.contains(PathConstant.LEFT_ANGLE_BRACKET)) {
-            typeStr = typeStr.substring(0, typeStr.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+        if (typeStr != null) {
+            typeStr = typeStr.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                    ? typeStr.substring(0, typeStr.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                    : typeStr;
         }
         return typeStr;
     }
@@ -60,10 +62,12 @@ public class ParameterParser {
         if (param == null) {
             return null;
         }
-        
+
         String typeStr = param.getType().asString(); // 不带有包名
-        if (typeStr != null && typeStr.contains(PathConstant.LEFT_ANGLE_BRACKET)) {
-            typeStr = typeStr.substring(0, typeStr.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+        if (typeStr != null) {
+            typeStr = typeStr.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                    ? typeStr.substring(0, typeStr.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                    : typeStr;
         }
         return typeStr;
     }

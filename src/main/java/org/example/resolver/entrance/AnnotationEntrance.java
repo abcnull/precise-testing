@@ -16,10 +16,11 @@ import org.example.resolver.model.MethodCallInfo;
  * 通过类注解寻找要分析的入口方法调用链
  */
 public class AnnotationEntrance {
+
     /**
      * 通过类注解和方法注解寻找要分析的入口方法调用链
      * 
-     * @param underPath 某个路径，比如 /user/xxx/project
+     * @param underPath 某个路径，比如 /user/xxx/project/某路径
      * @param classAnn  类注解，比如 @AbcClass 或者写 AbcClass
      * @param methodAnn 方法注解，比如 @AbcMethod 或者写 AbcMethod
      * @return 入口方法调用信息
@@ -69,70 +70,54 @@ public class AnnotationEntrance {
         try {
             List<File> javaFiles = collectJavaFiles(rootDir);
 
+            List<MethodCallInfo> result = new ArrayList<>();
             for (File javaFile : javaFiles) {
                 String content = new String(Files.readAllBytes(javaFile.toPath()));
+                // 移除注释，避免匹配被注释掉的代码
+                String cleanContent = removeComments(content);
 
                 // 利用组合正则判断文件是否同时包含类注解和方法注解
-                if (!Pattern.compile(combinedRegex).matcher(content).find()) {
+                if (!Pattern.compile(combinedRegex).matcher(cleanContent).find()) {
                     continue;
                 }
 
                 // 提取 package
-                String packageName = extractGroup(content, packagePattern, 1); // 已经是正确包名
+                String packageName = extractGroup(cleanContent, packagePattern, 1);
                 if (StringUtils.isBlank(packageName)) {
                     continue;
                 }
 
                 // 提取类名
-                String className = extractGroup(content, classPattern, 1);
+                String className = extractGroup(cleanContent, classPattern, 1);
                 if (StringUtils.isBlank(className)) {
                     continue;
                 }
-                className = className.substring(0, className.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+                className = className.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                        ? className.substring(0, className.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                        : className;
 
                 // 提取方法名和参数
-                Matcher methodMatcher = methodPattern.matcher(content);
-                if (methodMatcher.find()) {
+                Matcher methodMatcher = methodPattern.matcher(cleanContent);
+                while (methodMatcher.find()) {
                     String methodName = methodMatcher.group(1).trim();
                     String paramsStr = methodMatcher.group(2).trim();
 
                     // 解析参数列表，按逗号切割
-                    List<String> paramTypes = new ArrayList<>();
-                    if (StringUtils.isNotBlank(paramsStr)) {
-                        String[] params = paramsStr.split(PathConstant.HYP_PARAM_SEPARATOR2);
-                        for (String param : params) {
-                            if (param.contains(PathConstant.DOT_DOT_DOT)) {
-                                String[] paramSegs = param.trim().split(PathConstant.ESCAPE_DOT_DOT_DOT);
-                                if (paramSegs.length != 2) {
-                                    return null;
-                                }
-                                String paramType = paramSegs[0].trim().substring(0,
-                                        paramSegs[0].trim().indexOf(PathConstant.LEFT_ANGLE_BRACKET))
-                                        + PathConstant.ARR_BRACKETS;
-                                paramTypes.add(paramType);
-                            } else {
-                                String[] paramSegs = param.trim().split(" ");
-                                if (paramSegs.length != 2) {
-                                    return null;
-                                }
-                                String paramType = paramSegs[0].trim().substring(0,
-                                        paramSegs[0].trim().indexOf(PathConstant.LEFT_ANGLE_BRACKET));
-                                paramTypes.add(paramType);
-                            }
-                        }
+                    List<String> paramTypes = parseParamTypes(paramsStr);
+                    if (paramTypes == null) {
+                        return null;
                     }
 
                     // 构建全限定类名
                     String fullClassName = packageName + PathConstant.DOT + className;
 
-                    // 创建 MethodCallInfo 并返回
-                    List<MethodCallInfo> result = new ArrayList<>();
+                    // 创建 MethodCallInfo
                     result.add(new MethodCallInfo(fullClassName, methodName, paramTypes));
-                    return result;
                 }
             }
+
+            return result;
         } catch (IOException e) {
-            // 文件读取异常，返回 null
         }
 
         return null;
@@ -157,6 +142,13 @@ public class AnnotationEntrance {
     }
 
     /**
+     * 移除Java代码中的注释
+     */
+    private String removeComments(String content) {
+        return content.replaceAll("//.*|/\\*[\\s\\S]*?\\*/", "");
+    }
+
+    /**
      * 从内容中提取正则匹配的第一个分组
      */
     private String extractGroup(String content, Pattern pattern, int groupIndex) {
@@ -165,6 +157,43 @@ public class AnnotationEntrance {
             return matcher.group(groupIndex);
         }
         return null;
+    }
+
+    /**
+     * 解析参数类型列表
+     */
+    private List<String> parseParamTypes(String paramsStr) {
+        List<String> paramTypes = new ArrayList<>();
+        if (StringUtils.isBlank(paramsStr)) {
+            return paramTypes;
+        }
+
+        String[] params = paramsStr.split(PathConstant.HYP_PARAM_SEPARATOR2);
+        for (String param : params) {
+            if (param.contains(PathConstant.DOT_DOT_DOT)) {
+                String[] paramSegs = param.trim().split(PathConstant.ESCAPE_DOT_DOT_DOT);
+                if (paramSegs.length != 2) {
+                    return null;
+                }
+                String paramType = (paramSegs[0].contains(PathConstant.LEFT_ANGLE_BRACKET)
+                        ? paramSegs[0].trim().substring(0,
+                                paramSegs[0].trim().indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                        : paramSegs[0].trim())
+                        + PathConstant.ARR_BRACKETS;
+                paramTypes.add(paramType);
+            } else {
+                String[] paramSegs = param.trim().split(" ");
+                if (paramSegs.length != 2) {
+                    return null;
+                }
+                String paramType = paramSegs[0].contains(PathConstant.LEFT_ANGLE_BRACKET)
+                        ? paramSegs[0].trim().substring(0,
+                                paramSegs[0].trim().indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                        : paramSegs[0].trim();
+                paramTypes.add(paramType);
+            }
+        }
+        return paramTypes;
     }
 
 }

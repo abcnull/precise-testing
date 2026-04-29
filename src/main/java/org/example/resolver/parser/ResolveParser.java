@@ -95,7 +95,9 @@ public class ResolveParser {
                         continue;
                     }
                     // 去泛型
-                    fullType = fullType.substring(0, fullType.indexOf(PathConstant.LEFT_ANGLE_BRACKET));
+                    fullType = fullType.contains(PathConstant.LEFT_ANGLE_BRACKET)
+                            ? fullType.substring(0, fullType.indexOf(PathConstant.LEFT_ANGLE_BRACKET))
+                            : fullType;
                     paramTypes.add(fullType);
                 } catch (Exception ex) {
                     // 最终降级

@@ -21,14 +21,14 @@ public class Level2 {
 
     @SuppressWarnings("unchecked")
     public String level2_1Func(String name, int age) {
-        System.out.printf("here level2Func, name: {}, age: {}\n", name, age);
+        // System.out.printf("here level2Func, name: {}, age: {}\n", name, age);
 
-        Level3 level3 = new Level3();
-        // 调用 level3_1Func 方法
-        level3.level3_1Func(name, age);
+        // Level3 level3 = new Level3();
+        // // 调用 level3_1Func 方法
+        // level3.level3_1Func(name, age);
 
-        // 调用 level3_2Func 方法
-        level3.level3_2Func(name);
+        // // 调用 level3_2Func 方法
+        // level3.level3_2Func(name);
 
         return "level2_1Func";
     }

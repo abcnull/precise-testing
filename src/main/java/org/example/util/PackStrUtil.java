@@ -1,5 +1,14 @@
 package org.example.util;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Collections;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.apache.commons.lang3.StringUtils;
 import org.example.constant.PathConstant;
 
@@ -151,6 +160,49 @@ public class PackStrUtil {
             return false;
         }
         return true;
+    }
+
+    /**
+     * 获取项目路径下所有包路径的集合
+     * 
+     * @param projectPath 项目绝对路径
+     * @return 包路径集合
+     */
+    public static Set<String> getAllPackStrFromProject(String projectPath) {
+        if (StringUtils.isBlank(projectPath)) {
+            return Collections.emptySet();
+        }
+
+        Path rootPath = Paths.get(projectPath);
+        if (!Files.exists(rootPath) || !Files.isDirectory(rootPath)) {
+            return Collections.emptySet();
+        }
+        try {
+            return Files.walk(rootPath)
+                    .filter(Files::isDirectory)
+                    .filter(dir -> hasJavaFile(dir))
+                    .map(dir -> rootPath.relativize(dir).toString().replace(File.separator, PathConstant.DOT))
+                    .filter(pack -> !pack.isEmpty())
+                    .collect(Collectors.toSet());
+        } catch (IOException e) {
+            return Collections.emptySet();
+        }
+    }
+
+    /**
+     * 判断目录下是否有 Java 文件
+     * 
+     * @param dir 目录
+     * @return 是否有 Java 文件
+     */
+    private static boolean hasJavaFile(Path dir) {
+        try {
+            return Files.list(dir)
+                    .filter(Files::isRegularFile)
+                    .anyMatch(file -> file.getFileName().toString().endsWith(PathConstant.DOT_JAVA_SUFFIX));
+        } catch (IOException e) {
+            return false;
+        }
     }
 
 }

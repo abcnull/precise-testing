@@ -13,7 +13,7 @@ public class Level3 {
 
         Level1 level1 = new Level1();
         // 循环调用 level1Func 方法
-        level1.level1Func();
+        level1.level1Func(name, 18);
 
         return "level3_2Func";
     }

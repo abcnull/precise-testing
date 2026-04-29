@@ -66,7 +66,7 @@ public class DagNode {
         ClassInfo cls2 = dagNode.classInfo;
         if (cls1 == null || cls2 == null)
             return false;
-        if (!java.util.Objects.equals(cls1.getClassName(), cls2.getClassName()))
+        if (!java.util.Objects.equals(cls1.getDeclClassName(), cls2.getDeclClassName()))
             return false;
         if (!java.util.Objects.equals(cls1.getRealClassName(), cls2.getRealClassName()))
             return false;
@@ -97,7 +97,7 @@ public class DagNode {
             result = 31 * result + java.util.Objects.hashCode(packageInfo.getRealPackageName());
         }
         if (classInfo != null) {
-            result = 31 * result + java.util.Objects.hashCode(classInfo.getClassName());
+            result = 31 * result + java.util.Objects.hashCode(classInfo.getDeclClassName());
             result = 31 * result + java.util.Objects.hashCode(classInfo.getRealClassName());
         }
         if (funcInfo != null) {

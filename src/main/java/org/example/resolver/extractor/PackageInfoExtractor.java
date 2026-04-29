@@ -1,7 +1,7 @@
 package org.example.resolver.extractor;
 
 import org.example.node.field.PackageInfo;
-import org.example.util.StringUtil;
+import org.example.util.ClassStrUtil;
 
 /**
  * 专门用于提取 PackageInfo 和 PackageInfo 中的信息
@@ -15,8 +15,8 @@ public class PackageInfoExtractor implements InfoExtractor {
      * @return 包信息，包含声明包名和真实包名
      */
     public PackageInfo extract(String className, String realClassName) {
-        String packageName = StringUtil.getPackageName(className);
-        String realPackageName = StringUtil.getPackageName(realClassName);
+        String packageName = ClassStrUtil.getPackageName(className);
+        String realPackageName = ClassStrUtil.getPackageName(realClassName);
         return new PackageInfo(packageName, realPackageName);
     }
 }
