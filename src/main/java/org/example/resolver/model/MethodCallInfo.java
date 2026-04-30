@@ -7,13 +7,13 @@ import java.util.List;
  * 用于存储方法调用的详细信息，包括类名、真实类名、方法名、参数类型等
  */
 public class MethodCallInfo {
-    private final String className; // 声明类
+    private final String declClassName; // 声明类
     private final String realClassName; // 实现类
     private final String methodName; // 方法名
     private final List<String> paramTypes; // 方法参数
 
     public MethodCallInfo(String className, String realClassName, String methodName, List<String> paramTypes) {
-        this.className = className;
+        this.declClassName = className;
         this.realClassName = realClassName;
         this.methodName = methodName;
         this.paramTypes = paramTypes;
@@ -23,8 +23,8 @@ public class MethodCallInfo {
         this(className, className, methodName, paramTypes);
     }
 
-    public String getClassName() {
-        return className;
+    public String getDeclClassName() {
+        return declClassName;
     }
 
     public String getRealClassName() {

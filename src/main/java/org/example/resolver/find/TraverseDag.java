@@ -71,7 +71,7 @@ public class TraverseDag {
                 continue;
             }
             String myMethodName = callInfo.getMethodName(); // 方法名
-            String myDeclClassName = callInfo.getClassName(); // 节点声明类名
+            String myDeclClassName = callInfo.getDeclClassName(); // 节点声明类名
             if (myDeclClassName != null) {
                 if (myDeclClassName.contains(PathConstant.DOT)) {
                     myDeclClassName = myDeclClassName.substring(myDeclClassName.lastIndexOf(PathConstant.DOT));
@@ -258,7 +258,7 @@ public class TraverseDag {
     }
 
     /**
-     * 从指定节点的根父节点，最终构成 map
+     * 从指定节点的根父节点向下查找目标节点，最终构成 map
      * map.key = 指定节点 node
      * map.value = 指定节点 node 的所有最顶层的根父节点集合 roots
      * 
@@ -266,7 +266,7 @@ public class TraverseDag {
      * @param methodCallInfos 方法调用信息列表
      * @return 所有指定节点的根父节点映射
      */
-    public Map<DagNode, Set<DagNode>> findSpecific2RootMap(DagNode root, List<MethodCallInfo> methodCallInfos) {
+    public Map<DagNode, Set<DagNode>> findDownSpecific2RootMap(DagNode root, List<MethodCallInfo> methodCallInfos) {
         if (root == null || CollectionUtils.isEmpty(methodCallInfos)) {
             return null;
         }

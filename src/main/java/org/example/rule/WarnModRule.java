@@ -3,6 +3,9 @@ package org.example.rule;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.commons.lang3.StringUtils;
+import org.example.constant.PathConstant;
+
 import lombok.Getter;
 
 /**
@@ -33,6 +36,20 @@ public class WarnModRule implements IPreciseRule {
      */
     @Override
     public boolean shouldCreateNode(String realClassName, Set<String> allPackStr, int currentLayer) {
+        // 判断层级
+        if (currentLayer > maxLayer) {
+            return false;
+        }
+
+        // 只要是 jdk 的就不行
+        if (StringUtils.isNotBlank(realClassName)
+                && (realClassName.trim().startsWith(PathConstant.JAVA_DOT_PREFIX)
+                        || realClassName.trim().startsWith(PathConstant.JAVAX_DOT_PREFIX)
+                        || realClassName.startsWith(PathConstant.ORG_DOT_W3C_DOT_DOM_DOT)
+                        || realClassName.startsWith(PathConstant.ORG_DOT_XML_DOT_SAX_DOT))) {
+            return false;
+        }
+
         return true;
     }
 }

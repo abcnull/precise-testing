@@ -33,18 +33,27 @@ public abstract class CustomRule implements IPreciseRule {
     // 需要包含的类
     protected List<String> filterClasses;
 
-    abstract public void setPreciseModel(PreciseModel preciseModel);
+    public CustomRule() {
+        setPreciseModel();
+        setMaxLayer();
+        setThrownClasses();
+        setFilterClasses();
+    }
 
-    abstract public void setMaxLayer(int maxLayer);
+    abstract public void setPreciseModel();
 
-    abstract public void setThrownClasses(List<String> thrownClasses);
+    abstract public void setMaxLayer();
 
-    abstract public void setFilterClasses(List<String> filterClasses);
+    abstract public void setThrownClasses();
+
+    abstract public void setFilterClasses();
 
     /**
      * 通过 thrownClasses 和 filterClasses 检查是否应该构造该节点
      * 
-     * @param fullClassName 全限定实际类名
+     * @param realClassName 全限定实际类名
+     * @param allPackStr    所有包路径
+     * @param currentLayer  当前层级
      * @return 是否应该构造节点
      */
     @Override
@@ -91,7 +100,9 @@ public abstract class CustomRule implements IPreciseRule {
             // 只要是 jdk 的就不行
             if (StringUtils.isNotBlank(realClassName)
                     && (realClassName.trim().startsWith(PathConstant.JAVA_DOT_PREFIX)
-                            || realClassName.trim().startsWith(PathConstant.JAVAX_DOT_PREFIX))) {
+                            || realClassName.trim().startsWith(PathConstant.JAVAX_DOT_PREFIX)
+                            || realClassName.startsWith(PathConstant.ORG_DOT_W3C_DOT_DOM_DOT)
+                            || realClassName.startsWith(PathConstant.ORG_DOT_XML_DOT_SAX_DOT))) {
                 isPackAllowed = false;
             }
         } else if (preciseModel == PreciseModel.DANGER_MOD) {

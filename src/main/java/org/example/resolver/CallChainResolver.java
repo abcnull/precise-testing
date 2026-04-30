@@ -76,13 +76,14 @@ public class CallChainResolver {
     /**
      * 构造函数，初始化解析器组件
      * 
-     * @param sourceRootPath   项目根目录，比如
-     *                         /Users/abcnull/IdeaProjects/precise-testing/src/main/java
+     * @param sourceRootPath     项目根目录，比如
+     *                           /Users/abcnull/IdeaProjects/precise-testing/src/main/java
      * @param typeResolverPathes 符号解析路径，比如
-     *                         /Users/abcnull/IdeaProjects/precise-testing/src/main/java
-     * @param preciseRule      精确规则，用于过滤调用链路
-     * @param isConnected      是否连通，默认 false，即不连通，即每个方法都是独立的调用链路；true 表示连通，当创建多个 DAG
-     *                         后，即能做到多个 DAG 连通
+     *                           /Users/abcnull/IdeaProjects/precise-testing/src/main/java
+     * @param preciseRule        精确规则，用于过滤调用链路
+     * @param isConnected        是否连通，默认 false，即不连通，即每个方法都是独立的调用链路；true 表示连通，当创建多个
+     *                           DAG
+     *                           后，即能做到多个 DAG 连通
      * @return 调用链解析器实例
      */
     public CallChainResolver(String sourceRootPath, List<String> typeResolverPathes, IPreciseRule preciseRule,
@@ -282,7 +283,7 @@ public class CallChainResolver {
         List<MethodCallInfo> methodCalls = methodParser.parseOutMethodCalls(targetMethod);
         // 递归解析每个方法调用，深度优先搜索
         for (MethodCallInfo callInfo : methodCalls) {
-            DagNode childNode = resolveMethodCall(callInfo.getClassName(), callInfo.getRealClassName(),
+            DagNode childNode = resolveMethodCall(callInfo.getDeclClassName(), callInfo.getRealClassName(),
                     callInfo.getMethodName(), callInfo.getParamTypes(),
                     currentLayer + 1);
             // 只有当子节点不为 null 时，才将其添加到父节点的 children 列表中
@@ -701,42 +702,6 @@ public class CallChainResolver {
     private String buildMethodSignature(String className, String realClassName, String methodName,
             List<String> paramTypes) {
         return SignatureUtil.buildMethodSignature(className, realClassName, methodName, paramTypes);
-    }
-
-    /**
-     * 打印 DAG 树（从当前节点向下遍历子节点）
-     * 
-     * @param node 起始节点
-     */
-    public void printTree(DagNode node) {
-        printTreeRecursive(node, 0, true, "");
-    }
-
-    /**
-     * 递归打印 DAG 树
-     */
-    private void printTreeRecursive(DagNode node, int depth, boolean isLast, String prefix) {
-        if (node == null || node.getFuncInfo() == null) {
-            return;
-        }
-
-        // 构建当前节点的连接线
-        String connector = depth == 0 ? "" : (isLast ? "└── " : "├── ");
-        String currentPrefix = prefix + connector;
-
-        // 方法签名
-        String methodSignature = buildMethodSignatureForPrint(node);
-        System.out.println(currentPrefix + methodSignature);
-
-        // 递归打印子节点
-        if (node.getChildren() != null && !node.getChildren().isEmpty()) {
-            int childCount = node.getChildren().size();
-            for (int i = 0; i < childCount; i++) {
-                boolean childIsLast = (i == childCount - 1);
-                String childPrefix = prefix + (isLast ? "    " : "│   ");
-                printTreeRecursive(node.getChildren().get(i), depth + 1, childIsLast, childPrefix);
-            }
-        }
     }
 
     /**

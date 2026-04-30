@@ -113,7 +113,9 @@ public class ClassInfoExtractor implements InfoExtractor {
         }
         String realPackageName = ClassStrUtil.getPackageName(realClassName);
         if (realPackageName.startsWith(PathConstant.JAVA_DOT_PREFIX)
-                || realPackageName.startsWith(PathConstant.JAVAX_DOT_PREFIX)) {
+                || realPackageName.startsWith(PathConstant.JAVAX_DOT_PREFIX)
+                || realClassName.startsWith(PathConstant.ORG_DOT_W3C_DOT_DOM_DOT)
+                || realClassName.startsWith(PathConstant.ORG_DOT_XML_DOT_SAX_DOT)) {
             return ClassOrigin.JDK; // JDK类
         } else {
             return ClassOrigin.DEPENDENCY; // 依赖类

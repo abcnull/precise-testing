@@ -5,6 +5,12 @@ package org.example.constant;
  * 用于存储项目中的路径常量
  */
 public class PathConstant {
+    // 包路径
+    public static final String JAVA_DOT_PREFIX = "java.";
+    public static final String JAVAX_DOT_PREFIX = "javax.";
+    public static final String ORG_DOT_W3C_DOT_DOM_DOT = "org.w3c.dom.";
+    public static final String ORG_DOT_XML_DOT_SAX_DOT = "org.xml.sax.";
+
     // 路径
     public static final String JAVA_SOURCE_DIR = "src/main/java";
     public static final String LANG_PACK = "java.lang";
@@ -15,8 +21,6 @@ public class PathConstant {
     public static final String SYSTEM_OUT = "System.out";
     public static final String SYSTEM_ERR = "System.err";
     public static final String SYSTEM_IN = "System.in";
-    public static final String JAVA_DOT_PREFIX = "java.";
-    public static final String JAVAX_DOT_PREFIX = "javax.";
     public static final String DOT_CLASS_SUFFIX = ".class";
     public static final String DOT_JAVA_SUFFIX = ".java";
     public static final String DOT = ".";

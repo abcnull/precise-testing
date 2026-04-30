@@ -7,6 +7,7 @@ import java.util.Set;
  * 精确测试规则的接口
  */
 public interface IPreciseRule {
+
     PreciseModel getPreciseModel();
 
     int getMaxLayer();
