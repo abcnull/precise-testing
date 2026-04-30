@@ -1,3 +1,13 @@
+<div align=center>
+  <a href="https://godotengine.org/" target="_blank" rel="noopener noreferrer">
+    <img src="https://img.shields.io/badge/godot engine-4.x-blue"/>
+  </a>
+  <a href="https://godotengine.org/" target="_blank" rel="noopener noreferrer">
+    <img src="https://img.shields.io/badge/GDScript-green"/>
+  </a>
+  <img src="https://img.shields.io/badge/game-demo-white"/>
+</div>
+
 # precise-testing
 
 此项目使用 java 静态代码分析（底层使用 javaparser 能力），分析 `.java` 文件，从指定方法入口开始，找到项目中方法的层层调用链路
@@ -67,18 +77,26 @@ DagNode rootNode = resolver.resolveCallChain(startClass, startMethod, methodPara
 ## 方法调用链的结构（Dag 图）
 
 方法调用关系简单想可能是一个树形结构，比如一颗二叉树，方法 A1 -> B1, B2 然后 B1 -> C1, C2
+<center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/binary_tree.jpeg" alt="binary_tree.jpeg" width="50%" />
+</center>
 
 但其实方法调用与其说像二叉树，其实更像一颗多叉树，因为方法内存在众多方法的调用关系
+<center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/mutiple_fork_tree.jpg" alt="mutiple_fork_tree.jpg" width="50%" />
+</center>
 
 更进一步，方法调用仅仅是多叉树吗？不一定，因为多叉树要求任何节点有且仅有一个父亲节点，但其实方法调用可能出现如下(左)结构，除非同时被多个方法调用的 C1 方法你需要弄出新的对象，如下(右)结构，但这无疑增加了存储成本
 
+<center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/base_dag.jpg" alt="base_dag.jpg" width="50%" />
+</center>
 
-由于 dag 要求是没有环，但是方法调用可能存在环，比如递归，因此 dag 结构似乎也不满足，我们可以把 dag 做下优化，依然将方法调用链构造成一个 dag，做法是在遍历调用链时若发现存在循环调用的方法后，给其打上一个“已出现循环”的标记，而其可作为 dag 中的叶子节点，结构如下
+由于 dag 要求是没有环，但是方法调用可能存在环，比如递归，因此 dag 结构似乎也不满足，我们可以把 dag 做下优化，依然将方法调用链构造成一个 dag，做法是在遍历调用链时若发现存在循环调用的方法后，给其打上一个"已出现循环"的标记，而其可作为 dag 中的叶子节点，结构如下
 
+<center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/cycle_dag.jpg" alt="cycle_dag.jpg" width="10%" />
+</center>
 
 我们通过如下代码来创建一个方法调用解析器，并查找 2 个方法的调用链：
 
@@ -90,19 +108,27 @@ DagNode A2 = resolver.resolveCallChain(startClass2, startMethod2, methodParams2)
 
 其中 isConnected 表示是否连通，如果为 true 表示当使用 resolver 多次寻找不同方法调用链时，最终会自动把多个独立连通的 dag 组合成一个大的连通 dag（前提是多个独立 dag 中有共同的方法）。如果为 false 则表示每个方法的调用链都是独立的，不会被组合成一个大的连通 dag，如下：
 
+<center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/connected_dag.jpg" alt="connected_dag.jpg" />
+</center>
 
+<center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/unconnected_dag.jpg" alt="unconnected_dag.jpg" />
+</center>
 
 若 isConnected = true，我们希望其最后连通，很多时候当我们遍历这个 dag 找到某个中间节点时，我们希望能从中间节点快速往上查找，来找到父节点的内容，因此这个 dag 可能需要拥有指向父节点的指针：
 
-<img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/direction_dag.jpg" alt="direction_dag.jpg" width="50%" />
+<center>
+<img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/direction_dag.jpg" alt="direction_dag.jpg" width="30%" />
+</center>
 
 但它并不是环，因为当为了查找方法调用链时，只能往下一个方向去查找，且碰到循环重复出现的方法时会作为叶子节点特殊处理
 
 最终我们构造的方法调用 dag 有类似如下的结构，即对应 `src/main/java/org/example/node/DagNode.java` 结构
 
+<center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/final_dag.jpg" alt="final_dag.jpg" />
+</center>
 
 ## DagNode 节点解释
 
