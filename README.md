@@ -1,10 +1,12 @@
 <div align=center>
   <a href="https://www.java.com/" target="_blank" rel="noopener noreferrer">
-    <img src="https://img.shields.io/badge/Java-red"/>
+    <img src="https://img.shields.io/badge/Java-brown"/>
   </a>
   <a href="https://javaparser.org/" target="_blank" rel="noopener noreferrer">
     <img src="https://img.shields.io/badge/Javaparser-yellow"/>
   </a>
+  <img src="https://img.shields.io/badge/Code Analysis-black"/>
+  <img src="https://img.shields.io/badge/Testing Tools-green"/>
 </div>
 
 # precise-testing
