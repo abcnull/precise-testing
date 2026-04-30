@@ -1,11 +1,10 @@
 <div align=center>
-  <a href="https://godotengine.org/" target="_blank" rel="noopener noreferrer">
-    <img src="https://img.shields.io/badge/godot engine-4.x-blue"/>
+  <a href="https://www.java.com/" target="_blank" rel="noopener noreferrer">
+    <img src="https://img.shields.io/badge/Java-red"/>
   </a>
-  <a href="https://godotengine.org/" target="_blank" rel="noopener noreferrer">
-    <img src="https://img.shields.io/badge/GDScript-green"/>
+  <a href="https://javaparser.org/" target="_blank" rel="noopener noreferrer">
+    <img src="https://img.shields.io/badge/Javaparser-yellow"/>
   </a>
-  <img src="https://img.shields.io/badge/game-demo-white"/>
 </div>
 
 # precise-testing
