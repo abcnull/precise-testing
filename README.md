@@ -78,11 +78,13 @@ DagNode rootNode = resolver.resolveCallChain(startClass, startMethod, methodPara
 ## 方法调用链的结构（Dag 图）
 
 方法调用关系简单想可能是一个树形结构，比如一颗二叉树，方法 A1 -> B1, B2 然后 B1 -> C1, C2
+
 <center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/binary_tree.jpeg" alt="binary_tree.jpeg" width="50%" />
 </center>
 
 但其实方法调用与其说像二叉树，其实更像一颗多叉树，因为方法内存在众多方法的调用关系
+
 <center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/mutiple_fork_tree.jpg" alt="mutiple_fork_tree.jpg" width="50%" />
 </center>
@@ -314,7 +316,7 @@ IPreciseRule 中的过滤规则中
 ```java
 String classAnn = "@RestController"; // 写成 "RestController" 亦可
 String methodAnn = "@RequestMapping"; // 写成 "RequestMapping" 亦可
-String path = "/user/xxx/yyy/project/src/main/java/com/exapmle/name/controller" // 在指定路径下递归遍历其下所有包
+String path = "/user/xxx/yyy/project/src/main/java/com/example/name/controller" // 在指定路径下递归遍历其下所有包
 
 AnnotationEntrance ann = new AnnotationEntrance();
 List<MethodCallInfo> methodCallInfos = ann.findEntranceMethod(path, classAnn, methodAnn);
@@ -563,7 +565,7 @@ DagNode rootNodeN = resolver.resolveCallChain(startClassN, startMethodN, methodP
 ```java
 String classAnn = "@RestController"; // 写成 "RestController" 亦可
 String methodAnn = "@RequestMapping"; // 写成 "RequestMapping" 亦可
-String path = "/user/xxx/yyy/project/src/main/java/com/exapmle/name/controller" // 在指定路径下递归遍历其下所有包
+String path = "/user/xxx/yyy/project/src/main/java/com/example/name/controller" // 在指定路径下递归遍历其下所有包
 
 AnnotationEntrance ann = new AnnotationEntrance();
 List<MethodCallInfo> methodCallInfos = ann.findEntranceMethod(path, classAnn, methodAnn);
@@ -591,4 +593,4 @@ PrintDag printDag = new PrintDag();
 printDag.printSimpleCallChains(rootNode);
 ```
 
-你也可以使用 `src/main/java/org/example/resolver/find/TraverseDag.java` 中的各种 public 方法来遍历 Dag，或者自行编写 Dag 遍历方法
+你也可以使用 `src/main/java/org/example/resolver/find/TraverseDag.java` 中的各种 public 方法来遍历 Dag，或者自行编写 Dag 遍历方
