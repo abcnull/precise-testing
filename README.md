@@ -54,7 +54,7 @@ Level1#level1_func8(String, int)
             └── StringUtils#isBlank(null)
 ```
 
-核心即创建解析器，指定项目路径，符号解析路径，自定义查找规则，以及是否允许多个 dag 连通：
+核心即创建解析器，指定项目路径，符号解析路径，自定义查找规则，以及是否允许多个Dag连通：
 
 ```java
 CallChainResolver resolver = new CallChainResolver(sourceRoot, symbolSolverPaths, preciseRule, isConnected);
@@ -93,7 +93,7 @@ DagNode rootNode = resolver.resolveCallChain(startClass, startMethod, methodPara
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/base_dag.jpg" alt="base_dag.jpg" width="50%" />
 </center>
 
-由于 dag 要求是没有环，但是方法调用可能存在环，比如递归，因此 dag 结构似乎也不满足，我们可以把 dag 做下优化，依然将方法调用链构造成一个 dag，做法是在遍历调用链时若发现存在循环调用的方法后，给其打上一个"已出现循环"的标记，而其可作为 dag 中的叶子节点，结构如下
+由于 Dag 要求是没有环，但是方法调用可能存在环，比如递归，因此 Dag 结构似乎也不满足，我们可以把 Dag 做下优化，依然将方法调用链构造成一个 Dag，做法是在遍历调用链时若发现存在循环调用的方法后，给其打上一个"已出现循环"的标记，而其可作为 Dag 中的叶子节点，结构如下
 
 <center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/cycle_dag.jpg" alt="cycle_dag.jpg" width="10%" />
@@ -107,7 +107,7 @@ DagNode A1 = resolver.resolveCallChain(startClass, startMethod, methodParams);
 DagNode A2 = resolver.resolveCallChain(startClass2, startMethod2, methodParams2);
 ```
 
-其中 isConnected 表示是否连通，如果为 true 表示当使用 resolver 多次寻找不同方法调用链时，最终会自动把多个独立连通的 dag 组合成一个大的连通 dag（前提是多个独立 dag 中有共同的方法）。如果为 false 则表示每个方法的调用链都是独立的，不会被组合成一个大的连通 dag，如下：
+其中 isConnected 表示是否连通，如果为 true 表示当使用 resolver 多次寻找不同方法调用链时，最终会自动把多个独立连通的 Dag 组合成一个大的连通 Dag（前提是多个独立 Dag 中有共同的方法）。如果为 false 则表示每个方法的调用链都是独立的，不会被组合成一个大的连通 Dag，如下：
 
 <center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/connected_dag.jpg" alt="connected_dag.jpg" />
@@ -117,7 +117,7 @@ DagNode A2 = resolver.resolveCallChain(startClass2, startMethod2, methodParams2)
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/unconnected_dag.jpg" alt="unconnected_dag.jpg" />
 </center>
 
-若 isConnected = true，我们希望其最后连通，很多时候当我们遍历这个 dag 找到某个中间节点时，我们希望能从中间节点快速往上查找，来找到父节点的内容，因此这个 dag 可能需要拥有指向父节点的指针：
+若 isConnected = true，我们希望其最后连通，很多时候当我们遍历这个 Dag 找到某个中间节点时，我们希望能从中间节点快速往上查找，来找到父节点的内容，因此这个 Dag 可能需要拥有指向父节点的指针：
 
 <center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/direction_dag.jpg" alt="direction_dag.jpg" width="30%" />
@@ -125,7 +125,7 @@ DagNode A2 = resolver.resolveCallChain(startClass2, startMethod2, methodParams2)
 
 但它并不是环，因为当为了查找方法调用链时，只能往下一个方向去查找，且碰到循环重复出现的方法时会作为叶子节点特殊处理
 
-最终我们构造的方法调用 dag 有类似如下的结构，即对应 `src/main/java/org/example/node/DagNode.java` 结构
+最终我们构造的方法调用 Dag 有类似如下的结构，即对应 `src/main/java/org/example/node/DagNode.java` 结构
 
 <center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/final_dag.jpg" alt="final_dag.jpg" />
@@ -205,7 +205,7 @@ DagNode A1 = resolver.resolveCallChain(startClass, startMethod, methodParams);
 DagNode A2 = resolver.resolveCallChain(startClass2, startMethod2, methodParams2);
 ```
 
-当 isConnected == true 表示 A1，A2 如果有相同的节点，则二者能连通；当 isConnected == false 表示 A1，A2 是独立的，不会被组合成一个大的连通 dag。
+当 isConnected == true 表示 A1，A2 如果有相同的节点，则二者能连通；当 isConnected == false 表示 A1，A2 是独立的，不会被组合成一个大的连通 Dag。
 
 如果你使用默认的构造器，则默认不连通：
 
