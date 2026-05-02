@@ -89,13 +89,13 @@ DagNode rootNode = resolver.resolveCallChain(startClass, startMethod, methodPara
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/mutiple_fork_tree.jpg" alt="mutiple_fork_tree.jpg" width="50%" />
 </center>
 
-更进一步，方法调用仅仅是多叉树吗？不一定，因为多叉树要求任何节点有且仅有一个父亲节点，但其实方法调用可能出现如下(左)结构，除非同时被多个方法调用的 C1 方法你需要弄出新的对象，如下(右)结构，但这无疑增加了存储成本
+更进一步，方法调用仅仅是多叉树吗？不一定，因为多叉树要求任何节点有且仅有一个父亲节点，但其实方法调用可能出现如下(左)结构，除非同时被多个方法调用的 C1 方法你需要弄出新的对象，如下(右)结构，但这无疑增加了存储成本，所以此项目使用的如下(左)结构，一个 Dag 的结构
 
 <center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/base_dag.jpg" alt="base_dag.jpg" width="50%" />
 </center>
 
-由于 Dag 要求是没有环，但是方法调用可能存在环，比如递归，因此 Dag 结构似乎也不满足，我们可以把 Dag 做下优化，依然将方法调用链构造成一个 Dag，做法是在遍历调用链时若发现存在循环调用的方法后，给其打上一个"已出现循环"的标记，而其可作为 Dag 中的叶子节点，结构如下
+由于 Dag 要求是没有环，但是方法调用可能存在环，比如递归，因此 Dag 结构似乎也不满足，我们可以把 Dag 做下改造，依然将方法调用链构造成一个 Dag，但是区别是当遍历调用链时，若发现存在循环调用的方法后，给其打上一个"已出现循环"的标记，而"已出现循环"的标记的方法节点可作为 Dag 中的叶子节点，这样就终止了它的“环”，结构如下
 
 <center>
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/cycle_dag.jpg" alt="cycle_dag.jpg" width="10%" />
