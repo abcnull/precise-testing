@@ -13,16 +13,16 @@
 
 此项目使用 java 静态代码分析（底层使用 javaparser 能力），分析 `.java` 文件，从指定方法入口开始，找到项目中方法的层层调用链路
 
-项目想要快速尝试执行下 demo，可以看 `功能概述` 和 `Demo 快速先跑起来` 即可
+项目若想要立即试试，来看看效果，可以执行下 demo 包下的 `Main.java ` 即可，你可以结合着看 `功能概述` 和 `Demo 快速先跑起来` 来快速阅读
 
-建议：对于 java 项目，如果只能拿到 `.java` 文件无法拿到 `.class` 文件，解析方法调用链可以使用 javaparser 来解析。而若能拿到 `.class` 字节码文件，那么可以使用 ASM 来解析方法调用链。
+建议：对于 java 项目，如果只能拿到 `.java` 文件无法拿到 `.class` 文件，解析方法调用链可以使用 javaparser 来解析。而若能拿到 `.class` 字节码文件，那么可以使用 ASM 来解析方法调用链，因为 ASM 可能解析的更全（但处理也更复杂）。
 
 ## 功能概述
 
-项目是在做啥：使用 javaparser 的能力，从指定方法入口开始，找到项目中该方法一直往下调用的所有方法调用链
+项目是在做啥：使用 javaparser 的能力，从指定方法入口开始，找到项目中，该方法一直往下调用的所有方法调用链
 
 【javaparser 和 ASM】
-一般企业在做精准测试时，往往会使用 javaparser 结合 ASM 做方法调用链分析。由于 javaparser 做静态代码分析解析的是 `.java` 文件来构造 AST，而 ASM 则是解析 `.class` 文件来进行方法调用链分析，其实相比 javaparser 而言，ASM 要解析的更完整一些，且性能更好，但是 ASM 更偏低层能力，用户用起来更麻烦
+一般企业在做精准测试时，往往会使用 javaparser 结合 ASM 做方法调用链分析。由于 javaparser 做静态代码分析解析的是 `.java` 文件来构造 AST，而 ASM 则是解析 `.class` 文件来进行方法调用链分析，其实相比 javaparser 而言，ASM 要解析的更完整一些，且性能更好，但是 ASM 更偏低层能力，用户用起来相对更麻烦
 
 【不好解析的地方】
 相比 ASM，其实 javaparser 很多场景不太好解析：
@@ -40,9 +40,9 @@ ASM 其实性能要更好，不管是解析速度还是内存占用上
 
 ## Demo 快速先跑起来
 
-`src/main/java/org/example/demo` 下的所有内容都是为了展示，即 `src/main/java/org/example/demo` 整个内容删除也不影响整个项目
+`src/main/java/org/example/demo` 下的所有内容都是为了演示项目效果，即 `src/main/java/org/example/demo` 下的整个内容作删除也不会影响该项目
 
-你可以执行 `src/main/java/org/example/demo/Main.java` 即可看到打印：
+你可以执行 `src/main/java/org/example/demo/Main.java` 来看打印出的方法调用链路：
 
 ```
 Level1#level1_func8(String, int)
@@ -54,19 +54,19 @@ Level1#level1_func8(String, int)
             └── StringUtils#isBlank(null)
 ```
 
-核心即创建解析器，指定项目路径，符号解析路径，自定义查找规则，以及是否允许多个Dag连通：
+核心是创建解析器（指定项目路径、符号解析路径、自定义查找规则、以及是否允许多个Dag连通）：
 
 ```java
 CallChainResolver resolver = new CallChainResolver(sourceRoot, symbolSolverPaths, preciseRule, isConnected);
 ```
 
-分析某个方法往下层的调用链，你需要传入类的包路径，方法名，以及方法参数，这样才能指定到具体的方法：
+分析某个方法往下层的调用链（传入全限定的类名，方法名，以及方法参数）：
 
 ```java
 DagNode rootNode = resolver.resolveCallChain(startClass, startMethod, methodParams);
 ```
 
-当然最简单的方法，你可以直接：
+当然最简单的方式，你可以直接这样写（但它会采用一些默认的规则）：
 
 ```java
 // 默认项目路径，符号解析路径都是 sourceRoot，默认用 PreciseRule 是最常规模式，默认不允许多个 Dag 连通
