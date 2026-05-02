@@ -125,7 +125,7 @@ DagNode A2 = resolver.resolveCallChain(startClass2, startMethod2, methodParams2)
 <img src="https://github.com/abcnull/Image-Resources/blob/master/precise-testing/direction_dag.jpg" alt="direction_dag.jpg" width="30%" />
 </center>
 
-但它并不是环，因为当为了查找方法调用链时，只能往下一个方向去查找，且碰到循环重复出现的方法时会作为叶子节点特殊处理
+但它并不是环，因为当为了查找方法调用链时，只能往“下”，这一个方向去查找，且碰到重复出现的方法时，会将其打标，作为叶子节点来特殊处理
 
 最终我们构造的方法调用 Dag 有类似如下的结构，即对应 `src/main/java/org/example/node/DagNode.java` 结构
 
@@ -135,9 +135,9 @@ DagNode A2 = resolver.resolveCallChain(startClass2, startMethod2, methodParams2)
 
 ## DagNode 节点解释
 
-`src/main/java/org/example/node/DagNode.java` 以方法为节点核心，每个节点表示一个方法
+`src/main/java/org/example/node/DagNode.java` 以方法为节点核心，每个节点其实就是表示一个方法，这样看来 `DagNode` 更应该叫 `FuncNode`
 
-包含 6 大部分信息
+其中包含 6 大部分信息
 
 ### 包信息
 
